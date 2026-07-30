@@ -5,6 +5,24 @@ import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm } from "node:fs/promises";
 
+// Orval 8.23+ generates Zod v4 syntax (zod.int(), zod.email()); redirect exact 'zod'
+// imports to 'zod/v4' at bundle time. Using a plugin (not the alias option) because
+// esbuild's alias does prefix matching — alias { zod: 'zod/v4' } would also remap
+// 'zod/v4' to 'zod/v4/v4', breaking drizzle-zod and other packages that already
+// import from 'zod/v4' directly.
+const zodV4Plugin = {
+  name: "zod-v4-exact-alias",
+  setup(build) {
+    build.onResolve({ filter: /^zod$/ }, async (args) => {
+      const result = await build.resolve("zod/v4", {
+        resolveDir: args.resolveDir,
+        kind: args.kind,
+      });
+      return result;
+    });
+  },
+};
+
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
 
@@ -103,8 +121,9 @@ async function buildAll() {
     ],
     sourcemap: "linked",
     plugins: [
+      zodV4Plugin,
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
-      esbuildPluginPino({ transports: ["pino-pretty"] })
+      esbuildPluginPino({ transports: ["pino-pretty"] }),
     ],
     // Make sure packages that are cjs only (e.g. express) but are bundled continue to work in our esm output file
     banner: {

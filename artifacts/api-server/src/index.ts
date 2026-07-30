@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { seedDatabase } from "./lib/seed";
 
 const rawPort = process.env["PORT"];
 
@@ -15,11 +16,13 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
-
+app.listen(port, () => {
   logger.info({ port }, "Server listening");
+  // Auto-seed only in development — never run in production to avoid
+  // inserting predictable credentials into a live environment.
+  if (process.env.NODE_ENV === "development") {
+    seedDatabase().catch((err) => {
+      logger.error({ err }, "Seed failed");
+    });
+  }
 });
