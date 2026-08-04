@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { Menu, X, Sun, Moon, Globe, User, LogOut } from 'lucide-react';
+import { Menu, X, Sun, Moon, Globe, User, LogOut, ShieldCheck } from 'lucide-react';
 import { useUpdateLanguage, useLogout } from '@workspace/api-client-react';
 
 export function Navbar() {
@@ -135,6 +135,14 @@ export function Navbar() {
                     {user.email}
                   </div>
                   <DropdownMenuSeparator />
+                  {user.role === 'super_admin' && (
+                    <Link href="/admin">
+                      <DropdownMenuItem data-testid="link-admin">
+                        <ShieldCheck className="w-4 h-4 mr-2" />
+                        Admin
+                      </DropdownMenuItem>
+                    </Link>
+                  )}
                   <DropdownMenuItem onClick={handleLogout} data-testid="button-logout">
                     <LogOut className="w-4 h-4 mr-2" />
                     {t('nav.logout')}
@@ -242,6 +250,14 @@ export function Navbar() {
                 <div className="px-3 py-2 text-sm font-medium">
                   {user.firstName} {user.lastName}
                 </div>
+                {user.role === 'super_admin' && (
+                  <Link href="/admin" onClick={() => setMobileMenuOpen(false)}>
+                    <Button variant="ghost" size="sm" className="w-full justify-start" data-testid="link-mobile-admin">
+                      <ShieldCheck className="w-4 h-4 mr-2" />
+                      Admin
+                    </Button>
+                  </Link>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"

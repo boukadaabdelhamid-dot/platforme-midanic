@@ -6,6 +6,7 @@ import blogRouter from "./blog";
 import contactRouter from "./contact";
 import profileRouter from "./profile";
 import statsRouter from "./stats";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(blogRouter);
 router.use(contactRouter);
 router.use(profileRouter);
 router.use(statsRouter);
+router.use(adminRouter);
 
 export default router;

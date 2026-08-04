@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as SonnerToaster } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 import { AuthProvider } from '@/contexts/auth-context';
 import { ThemeProvider } from '@/contexts/theme-context';
 import { Navbar } from '@/components/layout/navbar';
@@ -27,6 +27,14 @@ import Privacy from '@/pages/privacy';
 import Terms from '@/pages/terms';
 import Login from '@/pages/login';
 import Register from '@/pages/register';
+import { AdminLayout } from '@/pages/admin/layout';
+import AdminOverview from '@/pages/admin/overview';
+import AdminUsers from '@/pages/admin/users';
+import AdminProducts from '@/pages/admin/products';
+import AdminLicenses from '@/pages/admin/licenses';
+import AdminContent from '@/pages/admin/content';
+import AdminCRM from '@/pages/admin/crm';
+import AdminTickets from '@/pages/admin/tickets';
 import './i18n';
 
 const queryClient = new QueryClient({
@@ -38,7 +46,35 @@ const queryClient = new QueryClient({
   },
 });
 
+function AdminRouter() {
+  return (
+    <AdminLayout>
+      <Switch>
+        <Route path="/admin" component={AdminOverview} />
+        <Route path="/admin/users" component={AdminUsers} />
+        <Route path="/admin/products" component={AdminProducts} />
+        <Route path="/admin/licenses" component={AdminLicenses} />
+        <Route path="/admin/content" component={AdminContent} />
+        <Route path="/admin/crm" component={AdminCRM} />
+        <Route path="/admin/tickets" component={AdminTickets} />
+      </Switch>
+    </AdminLayout>
+  );
+}
+
 function Router() {
+  const [location] = useLocation();
+  const isAdmin = location.startsWith('/admin');
+
+  if (isAdmin) {
+    return (
+      <div className="min-h-[100dvh] flex flex-col">
+        <Navbar />
+        <AdminRouter />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[100dvh] flex flex-col">
       <Navbar />
