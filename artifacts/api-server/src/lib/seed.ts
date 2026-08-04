@@ -3,6 +3,64 @@ import { eq } from "drizzle-orm";
 import { hashPassword } from "./auth";
 import { logger } from "./logger";
 
+/**
+ * Creates the first production administrator only when the deployment
+ * explicitly provides bootstrap credentials. This keeps predictable demo
+ * credentials out of production while still making a fresh Railway database
+ * usable without manual password-hash SQL.
+ */
+export async function ensureProductionAdmin(): Promise<void> {
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD;
+
+  if (!email && !password) {
+    logger.info(
+      "Production admin bootstrap skipped; set ADMIN_EMAIL and ADMIN_PASSWORD to create the first administrator",
+    );
+    return;
+  }
+
+  if (!email || !password) {
+    throw new Error(
+      "ADMIN_EMAIL and ADMIN_PASSWORD must be provided together for production admin bootstrap",
+    );
+  }
+
+  if (password.length < 12) {
+    throw new Error("ADMIN_PASSWORD must be at least 12 characters long");
+  }
+
+  const [existingUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, email));
+
+  if (existingUser) {
+    if (existingUser.role !== "super_admin") {
+      logger.warn(
+        { email },
+        "Production admin bootstrap found an existing non-admin account; no role changes were made",
+      );
+    } else {
+      logger.info({ email }, "Production administrator already exists");
+    }
+    return;
+  }
+
+  const passwordHash = await hashPassword(password);
+  await db.insert(usersTable).values({
+    email,
+    passwordHash,
+    firstName: "Admin",
+    lastName: "Midanic",
+    role: "super_admin",
+    language: "en",
+    companyName: "Midanic",
+  });
+
+  logger.info({ email }, "Production administrator created successfully");
+}
+
 export async function seedDatabase(): Promise<void> {
   // Check if already seeded
   const [existingAdmin] = await db.select().from(usersTable).where(eq(usersTable.email, "admin@midanic.com"));

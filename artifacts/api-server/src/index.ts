@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { seedDatabase } from "./lib/seed";
+import { ensureProductionAdmin, seedDatabase } from "./lib/seed";
 
 const rawPort = process.env["PORT"];
 
@@ -23,6 +23,10 @@ app.listen(port, () => {
   if (process.env.NODE_ENV === "development") {
     seedDatabase().catch((err) => {
       logger.error({ err }, "Seed failed");
+    });
+  } else if (process.env.NODE_ENV === "production") {
+    ensureProductionAdmin().catch((err) => {
+      logger.error({ err }, "Production admin bootstrap failed");
     });
   }
 });

@@ -34,8 +34,16 @@ In your service's **Variables** tab, add:
 | `NODE_ENV` | `production` | Disables dev-only seeding and enables static file serving |
 | `SESSION_SECRET` | `<random 64-char string>` | Used for JWT signing — generate with `openssl rand -hex 32` |
 | `DATABASE_URL` | *(auto-injected by Railway PostgreSQL)* | No action needed if you added the DB add-on |
+| `ADMIN_EMAIL` | Your administrator email | Used once to create the first `super_admin` account |
+| `ADMIN_PASSWORD` | A strong password (12+ characters) | Used once to create the first `super_admin` account |
 
 > **Tip:** Generate a strong secret with: `openssl rand -hex 32`
+
+On the first production startup, if both `ADMIN_EMAIL` and `ADMIN_PASSWORD` are
+present, the API creates that administrator when the email does not exist yet.
+If the account already exists, startup does not change its password or role.
+After confirming that you can log in, remove `ADMIN_PASSWORD` from the Railway
+service variables and redeploy; it is only needed for first-account bootstrap.
 
 ---
 
@@ -80,6 +88,8 @@ GET /api/healthz   →  { "status": "ok" }
 | `SESSION_SECRET` | Yes | — | JWT signing secret (min 32 chars) |
 | `NODE_ENV` | Yes | — | Set to `production` |
 | `LOG_LEVEL` | No | `info` | Pino log level (`debug`, `info`, `warn`, `error`) |
+| `ADMIN_EMAIL` | Only for first bootstrap | — | Email for the initial `super_admin` |
+| `ADMIN_PASSWORD` | Only for first bootstrap | — | Initial admin password (12+ characters) |
 
 ---
 
