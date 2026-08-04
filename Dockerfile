@@ -3,10 +3,10 @@
 # ──────────────────────────────────────────────
 FROM node:22-alpine AS builder
 
-# Enable corepack so we get the right pnpm version
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+# Install pnpm v10 explicitly — matches the pnpm-lock.yaml lockfileVersion 9.0
+# generated on this project. corepack would pull v11 which breaks
+# onlyBuiltDependencies handling (ERR_PNPM_IGNORED_BUILD_SCRIPTS).
+RUN npm install -g pnpm@10
 
 WORKDIR /app
 
