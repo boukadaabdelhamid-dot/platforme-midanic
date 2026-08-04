@@ -41,8 +41,13 @@ if (process.env.NODE_ENV === "production") {
   if (existsSync(staticDir)) {
     app.use(express.static(staticDir));
     // SPA fallback: any non-API path that has no matching static file gets
-    // index.html so client-side routing (wouter) can take over.
-    app.get("*", (_req, res) => {
+    // index.html so client-side routing (wouter) can take over. Express 5
+    // rejects the old `*` route pattern, so use middleware instead.
+    app.use((req, res, next) => {
+      if (req.path === "/api" || req.path.startsWith("/api/")) {
+        next();
+        return;
+      }
       res.sendFile(path.join(staticDir, "index.html"));
     });
     logger.info({ staticDir }, "Serving frontend static files");
