@@ -36,14 +36,20 @@ export async function ensureProductionAdmin(): Promise<void> {
     .where(eq(usersTable.email, email));
 
   if (existingUser) {
-    if (existingUser.role !== "super_admin") {
-      logger.warn(
-        { email },
-        "Production admin bootstrap found an existing non-admin account; no role changes were made",
-      );
-    } else {
-      logger.info({ email }, "Production administrator already exists");
-    }
+    const passwordHash = await hashPassword(password);
+    await db
+      .update(usersTable)
+      .set({
+        passwordHash,
+        role: "super_admin",
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(usersTable.id, existingUser.id));
+    logger.info(
+      { email },
+      "Production administrator credentials synchronized successfully",
+    );
     return;
   }
 

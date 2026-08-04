@@ -41,9 +41,11 @@ In your service's **Variables** tab, add:
 
 On the first production startup, if both `ADMIN_EMAIL` and `ADMIN_PASSWORD` are
 present, the API creates that administrator when the email does not exist yet.
-If the account already exists, startup does not change its password or role.
-After confirming that you can log in, remove `ADMIN_PASSWORD` from the Railway
-service variables and redeploy; it is only needed for first-account bootstrap.
+If the email already exists, startup synchronizes that account's password,
+activates it, and promotes it to `super_admin`. This only happens for the
+explicitly configured bootstrap email. After confirming that you can log in,
+remove `ADMIN_PASSWORD` from the Railway service variables and redeploy; it is
+only needed for first-account bootstrap.
 
 ---
 
