@@ -37,6 +37,9 @@ RUN pnpm --filter @workspace/api-server run build
 # ──────────────────────────────────────────────
 FROM node:22-alpine AS runner
 
+# Run as a non-root user to reduce the attack surface in production.
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -48,6 +51,10 @@ COPY --from=builder /app/artifacts/api-server/dist ./dist
 
 # Copy the built frontend so the API can serve it as static files
 COPY --from=builder /app/artifacts/midanic-web/dist/public ./public
+
+# Ensure the non-root user owns all app files
+RUN chown -R appuser:appgroup /app
+USER appuser
 
 EXPOSE 8080
 
