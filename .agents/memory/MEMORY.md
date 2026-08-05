@@ -2,3 +2,4 @@
 - [esbuild alias prefix matching](esbuild-alias-prefix.md) — esbuild alias does prefix matching, so alias {zod→zod/v4} also remaps zod/v4→zod/v4/v4; use an onResolve plugin with /^zod$/ filter instead
 - [i18next package firewall](i18next-version.md) — Replit package firewall only serves i18next v26+; design subagent may request v23.x which fails; always use ^26.0.0 in midanic-web
 - [API production bundle dependencies](api-production-bundle-dependencies.md) — Docker runtime copies only dist; dependencies used by the API must be bundled or explicitly copied into the final image
+- [Legacy database migration bootstrap](legacy-database-migration-bootstrap.md) — Existing push-managed databases need idempotent schema reconciliation before timestamp-based migrations
