@@ -39,6 +39,16 @@ runMigrations()
     });
   })
   .catch((err: unknown) => {
-    logger.error({ err }, "Database migration failed — server will not start");
+    const errorDetails =
+      err instanceof Error
+        ? { name: err.name, message: err.message, stack: err.stack }
+        : { value: String(err) };
+    logger.error(
+      { migrationError: errorDetails },
+      "Database migration failed — server will not start",
+    );
+    // Keep the full cause visible in platforms that only display plain log
+    // messages and strip structured logger fields.
+    console.error("Database migration failure details:", errorDetails);
     process.exit(1);
   });
