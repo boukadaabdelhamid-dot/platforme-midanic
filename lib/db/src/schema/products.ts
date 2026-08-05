@@ -34,7 +34,7 @@ export const productVersionsTable = pgTable("product_versions", {
 export const downloadFilesTable = pgTable("download_files", {
   id: serial("id").primaryKey(),
   productId: integer("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
-  versionId: integer("version_id").references(() => productVersionsTable.id),
+  versionId: integer("version_id").references(() => productVersionsTable.id, { onDelete: "set null" }),
   fileName: text("file_name").notNull(),
   fileSize: integer("file_size").notNull().default(0),
   platform: text("platform").notNull().default("windows"),
