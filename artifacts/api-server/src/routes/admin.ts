@@ -16,7 +16,7 @@ import {
   supportTicketsTable,
   ticketMessagesTable,
 } from "@workspace/db";
-import { eq, desc, count, ilike, or, sql, and } from "drizzle-orm";
+import { eq, ne, desc, count, ilike, or, sql, and } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -258,7 +258,7 @@ router.patch("/admin/products/:productId/versions/:versionId", async (req, res):
       .set({ isLatest: false })
       .where(and(
         eq(productVersionsTable.productId, productId),
-        eq(productVersionsTable.id, versionId).not(),
+        ne(productVersionsTable.id, versionId),
       ));
     updates.isLatest = true;
   } else if ("isLatest" in req.body) {
@@ -331,6 +331,18 @@ router.post("/admin/products/:productId/downloads", async (req, res): Promise<vo
     res.status(400).json({ error: "fileName, downloadUrl and platform are required" });
     return;
   }
+  // Validate versionId belongs to this product (same check as PATCH)
+  let resolvedVersionId: number | null = null;
+  if (versionId != null) {
+    const vid = Number(versionId);
+    const [ver] = await db
+      .select({ id: productVersionsTable.id })
+      .from(productVersionsTable)
+      .where(and(eq(productVersionsTable.id, vid), eq(productVersionsTable.productId, productId)));
+    if (!ver) { res.status(400).json({ error: "versionId does not belong to this product" }); return; }
+    resolvedVersionId = vid;
+  }
+
   const [created] = await db
     .insert(downloadFilesTable)
     .values({
@@ -340,7 +352,7 @@ router.post("/admin/products/:productId/downloads", async (req, res): Promise<vo
       platform: String(platform),
       version: version ? String(version) : null,
       downloadUrl: String(downloadUrl),
-      versionId: versionId ? Number(versionId) : null,
+      versionId: resolvedVersionId,
       isPublic: Boolean(isPublic ?? true),
     })
     .returning();
