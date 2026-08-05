@@ -77,6 +77,53 @@ router.patch("/profile/language", requireAuth, async (req, res): Promise<void> =
   res.json({ message: "Language updated successfully" });
 });
 
+// Customer: read own downloads (files for products with active licenses)
+router.get("/my/downloads", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.userId;
+
+  // Get productIds for active licenses belonging to this user
+  const activeLicenses = await db
+    .select({ productId: licensesTable.productId })
+    .from(licensesTable)
+    .where(eq(licensesTable.userId, userId));
+
+  if (activeLicenses.length === 0) {
+    res.json({ downloads: [] });
+    return;
+  }
+
+  const productIds = [...new Set(activeLicenses.map((l) => l.productId))];
+
+  // Import needed ops dynamically to avoid re-import at top
+  const { inArray } = await import("drizzle-orm");
+  const { downloadFilesTable, productVersionsTable } = await import("@workspace/db");
+
+  const downloads = await db
+    .select({
+      id: downloadFilesTable.id,
+      fileName: downloadFilesTable.fileName,
+      fileSize: downloadFilesTable.fileSize,
+      platform: downloadFilesTable.platform,
+      version: downloadFilesTable.version,
+      downloadUrl: downloadFilesTable.downloadUrl,
+      isPublic: downloadFilesTable.isPublic,
+      productId: downloadFilesTable.productId,
+      productName: productsTable.name,
+      productSlug: productsTable.slug,
+      isLatest: productVersionsTable.isLatest,
+    })
+    .from(downloadFilesTable)
+    .leftJoin(productsTable, eq(downloadFilesTable.productId, productsTable.id))
+    .leftJoin(
+      productVersionsTable,
+      eq(downloadFilesTable.versionId, productVersionsTable.id)
+    )
+    .where(inArray(downloadFilesTable.productId, productIds))
+    .orderBy(desc(downloadFilesTable.id));
+
+  res.json({ downloads });
+});
+
 // Customer: read own licenses
 router.get("/my/licenses", requireAuth, async (req, res): Promise<void> => {
   const userId = req.user!.userId;

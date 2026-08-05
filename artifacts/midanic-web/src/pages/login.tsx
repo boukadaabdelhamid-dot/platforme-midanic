@@ -40,7 +40,7 @@ export default function Login() {
         onSuccess: (response) => {
           authLogin(response.accessToken, response.refreshToken, response.user);
           toast.success(t('auth.login_success'));
-          setLocation('/');
+          setLocation(response.user.role === 'super_admin' ? '/admin' : '/dashboard');
         },
         onError: () => {
           toast.error(t('auth.login_error'));

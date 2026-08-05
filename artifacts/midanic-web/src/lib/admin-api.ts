@@ -76,6 +76,7 @@ export const adminApi = {
     request<AdminLicense>(`/admin/licenses/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteLicense: (id: number) => request<void>(`/admin/licenses/${id}`, { method: "DELETE" }),
   getMyLicenses: () => request<{ licenses: MyLicense[] }>("/my/licenses"),
+  getMyDownloads: () => request<{ downloads: MyDownload[] }>("/my/downloads"),
 
   // Subscriptions
   listSubscriptions: (params?: { page?: number; limit?: number }) =>
@@ -300,6 +301,20 @@ export interface AdminSubscription {
   userFirstName: string | null;
   userLastName: string | null;
   productName: string | null;
+}
+
+export interface MyDownload {
+  id: number;
+  fileName: string;
+  fileSize: number | null;
+  platform: string;
+  version: string | null;
+  downloadUrl: string;
+  isPublic: boolean;
+  productId: number;
+  productName: string | null;
+  productSlug: string | null;
+  isLatest: boolean | null;
 }
 
 export interface SubscriptionListResponse {

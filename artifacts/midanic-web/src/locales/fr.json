@@ -13,7 +13,8 @@
     "login": "Connexion",
     "register": "S'inscrire",
     "logout": "Déconnexion",
-    "profile": "Profil"
+    "profile": "Profil",
+    "dashboard": "Mon Tableau de Bord"
   },
   "home": {
     "hero_title": "Logiciels d'Entreprise Conçus pour les Entreprises Algériennes",

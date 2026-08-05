@@ -27,6 +27,7 @@ import Privacy from '@/pages/privacy';
 import Terms from '@/pages/terms';
 import Login from '@/pages/login';
 import Register from '@/pages/register';
+import Dashboard from '@/pages/dashboard';
 import { AdminLayout } from '@/pages/admin/layout';
 import AdminOverview from '@/pages/admin/overview';
 import AdminUsers from '@/pages/admin/users';
@@ -96,6 +97,7 @@ function Router() {
         <Route path="/demo" component={Demo} />
         <Route path="/privacy" component={Privacy} />
         <Route path="/terms" component={Terms} />
+        <Route path="/dashboard" component={Dashboard} />
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
         <Route component={NotFound} />
