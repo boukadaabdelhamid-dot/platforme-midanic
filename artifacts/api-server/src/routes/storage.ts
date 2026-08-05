@@ -1,4 +1,6 @@
 import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
+import { Transform } from 'stream';
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
@@ -14,6 +16,12 @@ import {
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+
+function getRequestOrigin(req: Request): string {
+  const forwardedProto = req.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  const protocol = forwardedProto || req.protocol;
+  return `${protocol}://${req.get('host')}`;
+}
 
 /**
  * POST /storage/uploads/request-url
@@ -37,10 +45,15 @@ router.post(
 
     try {
       const { name, size, contentType } = parsed.data;
-
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-      const objectPath =
-        objectStorageService.normalizeObjectEntityPath(uploadURL);
+      const { uploadURL: rawUploadURL, objectPath } =
+        await objectStorageService.createUploadTarget({
+          name,
+          size,
+          contentType,
+        });
+      const uploadURL = rawUploadURL.startsWith('/')
+        ? new URL(rawUploadURL, getRequestOrigin(req)).toString()
+        : rawUploadURL;
 
       res.json(
         RequestUploadUrlResponse.parse({
@@ -51,7 +64,92 @@ router.post(
       );
     } catch (error) {
       req.log.error({ err: error }, 'Error generating upload URL');
-      res.status(500).json({ error: 'Failed to generate upload URL' });
+      res.status(500).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Failed to generate upload URL',
+      });
+    }
+  },
+);
+
+/**
+ * PUT /storage/uploads/local/:token
+ *
+ * Fallback upload endpoint for deployments that do not have the Replit
+ * Object Storage sidecar (for example Railway). The signed token is short
+ * lived and binds the upload to its requested size and content type.
+ */
+router.put(
+  '/storage/uploads/local/:token',
+  async (req: Request, res: Response) => {
+    try {
+      const token = Array.isArray(req.params.token)
+        ? req.params.token[0]
+        : req.params.token;
+      const upload = objectStorageService.getLocalUpload(token);
+      if (!upload) {
+        res.status(401).json({ error: 'Invalid or expired upload link' });
+        return;
+      }
+
+      const contentLength = Number(req.headers['content-length'] || 0);
+      if (contentLength > upload.maxSize) {
+        res.status(413).json({ error: 'Uploaded file is too large' });
+        return;
+      }
+
+      let bytes = 0;
+      const limiter = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          bytes += chunk.length;
+          if (bytes > upload.maxSize) {
+            callback(new Error('Uploaded file is too large'));
+            return;
+          }
+          callback(null, chunk);
+        },
+      });
+      const chunks: Buffer[] = [];
+      limiter.on('data', (chunk: Buffer) => chunks.push(chunk));
+      await pipeline(req, limiter);
+
+      await objectStorageService.saveLocalUpload(
+        token,
+        Buffer.concat(chunks),
+        String(req.headers['content-type'] || ''),
+      );
+      res.status(201).json({ objectPath: `/local-objects/${upload.objectId}` });
+    } catch (error) {
+      req.log.error({ err: error }, 'Error saving local upload');
+      res.status(400).json({
+        error:
+          error instanceof Error ? error.message : 'Failed to save upload',
+      });
+    }
+  },
+);
+
+router.get(
+  '/storage/local-objects/:objectId',
+  async (req: Request, res: Response) => {
+    try {
+      const object = await objectStorageService.getLocalObject(
+        Array.isArray(req.params.objectId)
+          ? req.params.objectId[0]
+          : req.params.objectId,
+      );
+      res.type(object.contentType);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(object.data);
+    } catch (error) {
+      if (error instanceof ObjectNotFoundError) {
+        res.status(404).json({ error: 'File not found' });
+        return;
+      }
+      req.log.error({ err: error }, 'Error serving local object');
+      res.status(500).json({ error: 'Failed to serve file' });
     }
   },
 );
@@ -114,10 +212,14 @@ router.post(
       return;
     }
     try {
-      await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
-        owner: 'admin',
-        visibility: 'public',
-      });
+      if (objectPath.startsWith('/local-objects/')) {
+        await objectStorageService.confirmLocalObject(objectPath);
+      } else {
+        await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
+          owner: 'admin',
+          visibility: 'public',
+        });
+      }
       res.json({ objectPath, visibility: 'public' });
     } catch (error) {
       if (error instanceof ObjectNotFoundError) {

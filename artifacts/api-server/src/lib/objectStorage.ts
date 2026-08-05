@@ -1,6 +1,7 @@
-import { randomUUID } from 'crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { Readable } from 'stream';
 import { File, Storage } from '@google-cloud/storage';
+import { pool } from '@workspace/db';
 
 import {
   canAccessObject,
@@ -38,8 +39,185 @@ export class ObjectNotFoundError extends Error {
   }
 }
 
+export type UploadMetadata = {
+  name: string;
+  size: number;
+  contentType: string;
+};
+
+export type UploadTarget = {
+  uploadURL: string;
+  objectPath: string;
+  backend: 'replit' | 'local';
+};
+
+type LocalUploadToken = {
+  objectId: string;
+  expiresAt: number;
+  contentType: string;
+  maxSize: number;
+};
+
 export class ObjectStorageService {
   constructor() {}
+
+  private usesReplitObjectStorage(): boolean {
+    return Boolean(
+      process.env.REPL_ID &&
+        process.env.PRIVATE_OBJECT_DIR &&
+        process.env.PUBLIC_OBJECT_SEARCH_PATHS,
+    );
+  }
+
+  private getLocalTokenSecret(): string {
+    const secret = process.env.SESSION_SECRET;
+    if (!secret) {
+      throw new Error(
+        'SESSION_SECRET is required for local upload links. Configure it in the production environment.',
+      );
+    }
+    return secret;
+  }
+
+  private createLocalUploadToken(metadata: UploadMetadata): {
+    token: string;
+    objectId: string;
+  } {
+    const payload: LocalUploadToken = {
+      objectId: randomUUID(),
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      contentType: metadata.contentType,
+      maxSize: metadata.size,
+    };
+    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString(
+      'base64url',
+    );
+    const signature = createHmac('sha256', this.getLocalTokenSecret())
+      .update(encodedPayload)
+      .digest('base64url');
+    return {
+      token: `${encodedPayload}.${signature}`,
+      objectId: payload.objectId,
+    };
+  }
+
+  private parseLocalUploadToken(token: string): LocalUploadToken | null {
+    const [encodedPayload, signature] = token.split('.');
+    if (!encodedPayload || !signature) return null;
+
+    const expectedSignature = createHmac('sha256', this.getLocalTokenSecret())
+      .update(encodedPayload)
+      .digest('base64url');
+    const actual = Buffer.from(signature);
+    const expected = Buffer.from(expectedSignature);
+    if (
+      actual.length !== expected.length ||
+      !timingSafeEqual(actual, expected)
+    ) {
+      return null;
+    }
+
+    try {
+      const payload = JSON.parse(
+        Buffer.from(encodedPayload, 'base64url').toString('utf8'),
+      ) as LocalUploadToken;
+      if (
+        !payload.objectId ||
+        !Number.isFinite(payload.expiresAt) ||
+        payload.expiresAt < Date.now() ||
+        !Number.isFinite(payload.maxSize) ||
+        payload.maxSize < 0
+      ) {
+        return null;
+      }
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  async createUploadTarget(metadata: UploadMetadata): Promise<UploadTarget> {
+    if (this.usesReplitObjectStorage()) {
+      const uploadURL = await this.getObjectEntityUploadURL();
+      return {
+        uploadURL,
+        objectPath: this.normalizeObjectEntityPath(uploadURL),
+        backend: 'replit',
+      };
+    }
+
+    if (metadata.size > 10 * 1024 * 1024) {
+      throw new Error(
+        'Image uploads outside Replit are limited to 10 MB. Configure S3-compatible storage for larger files.',
+      );
+    }
+
+    const { token, objectId } = this.createLocalUploadToken(metadata);
+    return {
+      uploadURL: `/api/storage/uploads/local/${token}`,
+      objectPath: `/local-objects/${objectId}`,
+      backend: 'local',
+    };
+  }
+
+  getLocalUpload(token: string): LocalUploadToken | null {
+    return this.parseLocalUploadToken(token);
+  }
+
+  async saveLocalUpload(
+    token: string,
+    content: Buffer,
+    contentType: string,
+  ): Promise<string> {
+    const payload = this.parseLocalUploadToken(token);
+    if (!payload) throw new Error('Invalid or expired upload link');
+    if (content.length > payload.maxSize) {
+      throw new Error('Uploaded file is larger than the requested size');
+    }
+    if (contentType && contentType !== payload.contentType) {
+      throw new Error('Uploaded content type does not match the requested type');
+    }
+
+    const result = await pool.query(
+      `INSERT INTO "uploaded_assets" ("id", "content_type", "data")
+       VALUES ($1, $2, $3)
+       ON CONFLICT ("id") DO NOTHING
+       RETURNING "id"`,
+      [payload.objectId, payload.contentType, content],
+    );
+    if (result.rowCount !== 1) {
+      throw new Error('This upload link has already been used');
+    }
+    return `/local-objects/${payload.objectId}`;
+  }
+
+  async getLocalObject(objectId: string): Promise<{
+    data: Buffer;
+    contentType: string;
+  }> {
+    if (!/^[0-9a-f-]{36}$/i.test(objectId)) {
+      throw new ObjectNotFoundError();
+    }
+    const result = await pool.query<{
+      data: Buffer;
+      content_type: string;
+    }>(
+      `SELECT "data", "content_type"
+       FROM "uploaded_assets"
+       WHERE "id" = $1`,
+      [objectId],
+    );
+    const asset = result.rows[0];
+    if (!asset) {
+      throw new ObjectNotFoundError();
+    }
+    return { data: asset.data, contentType: asset.content_type };
+  }
+
+  async confirmLocalObject(objectPath: string): Promise<void> {
+    const objectId = objectPath.replace(/^\/local-objects\//, '');
+    await this.getLocalObject(objectId);
+  }
 
   getPublicObjectSearchPaths(): Array<string> {
     const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || '';

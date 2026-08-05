@@ -16,6 +16,17 @@ if (!process.env.DATABASE_URL) {
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle(pool, { schema });
 
+async function ensureUploadedAssetsSchema(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "uploaded_assets" (
+      "id" uuid PRIMARY KEY NOT NULL,
+      "content_type" text NOT NULL,
+      "data" bytea NOT NULL,
+      "created_at" timestamp with time zone DEFAULT now() NOT NULL
+    )
+  `);
+}
+
 async function ensureProductManagementSchema(): Promise<void> {
   const client = await pool.connect();
   try {
@@ -243,6 +254,10 @@ export async function runMigrations(): Promise<void> {
   }
 
   await migrate(db, { migrationsFolder });
+  // This runs after Drizzle migrations so it also covers a brand-new
+  // database, where the products table did not exist during the bootstrap
+  // detection above.
+  await ensureUploadedAssetsSchema();
 }
 
 export * from "./schema";

@@ -3,3 +3,4 @@
 - [i18next package firewall](i18next-version.md) — Replit package firewall only serves i18next v26+; design subagent may request v23.x which fails; always use ^26.0.0 in midanic-web
 - [API production bundle dependencies](api-production-bundle-dependencies.md) — Docker runtime copies only dist; dependencies used by the API must be bundled or explicitly copied into the final image
 - [Legacy database migration bootstrap](legacy-database-migration-bootstrap.md) — Existing push-managed databases need idempotent schema reconciliation before timestamp-based migrations
+- [External deployment uploads](external-deployment-uploads.md) — Replit Object Storage sidecar is unavailable outside Replit; production needs a durable non-sidecar upload path
