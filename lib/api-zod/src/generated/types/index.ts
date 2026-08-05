@@ -36,6 +36,8 @@ export * from './registerInputLanguage';
 export * from './successResponse';
 export * from './tokenResponse';
 export * from './trialRequestInput';
+export * from './uploadUrlRequest';
+export * from './uploadUrlResponse';
 export * from './userProfile';
 export * from './userProfileLanguage';
 export * from './userProfileRole';

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   adminApi,
   type AdminProduct,
@@ -47,8 +47,61 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Star, Download, Tag } from 'lucide-react';
+import { Plus, Pencil, Trash2, Star, Download, Tag, Upload, ImageIcon, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+// ── File upload helpers ────────────────────────────────────────────────────
+
+function getToken(): string {
+  return localStorage.getItem('accessToken') ?? '';
+}
+
+/** Upload a file to object storage and return the serving URL. */
+async function uploadFileToStorage(file: File): Promise<string> {
+  // Step 1: Request presigned URL (send JSON metadata, NOT the file)
+  const metaRes = await fetch('/api/storage/uploads/request-url', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getToken()}`,
+    },
+    body: JSON.stringify({
+      name: file.name,
+      size: file.size,
+      contentType: file.type || 'application/octet-stream',
+    }),
+  });
+  if (!metaRes.ok) {
+    const err = await metaRes.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to get upload URL');
+  }
+  const { uploadURL, objectPath } = await metaRes.json() as { uploadURL: string; objectPath: string };
+
+  // Step 2: Upload directly to GCS via presigned URL
+  const uploadRes = await fetch(uploadURL, {
+    method: 'PUT',
+    body: file,
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+  });
+  if (!uploadRes.ok) throw new Error('Failed to upload file to storage');
+
+  // Step 3: Set the object ACL to public so the serving endpoint allows access
+  const confirmRes = await fetch('/api/storage/uploads/confirm-public', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getToken()}`,
+    },
+    body: JSON.stringify({ objectPath }),
+  });
+  if (!confirmRes.ok) {
+    const err = await confirmRes.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error || 'Failed to publish uploaded file');
+  }
+
+  // Return the serving URL: /api/storage + objectPath
+  return `/api/storage${objectPath}`;
+}
 
 const LICENSE_TYPES = [
   { value: 'trial', label: 'Trial' },
@@ -112,6 +165,12 @@ export default function AdminProducts() {
   const [downloadForm, setDownloadForm] = useState<DownloadInput>(EMPTY_DOWNLOAD);
   const [savingDownload, setSavingDownload] = useState(false);
   const [deleteDownloadId, setDeleteDownloadId] = useState<number | null>(null);
+
+  // Upload state
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { toast } = useToast();
 
@@ -346,6 +405,44 @@ export default function AdminProducts() {
     }
   };
 
+  // ── Upload handlers ───────────────────────────────────────────────────────
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const url = await uploadFileToStorage(file);
+      setForm((prev) => ({ ...prev, imageUrl: url }));
+      toast({ title: 'Image uploaded successfully' });
+    } catch (err: unknown) {
+      toast({ title: 'Upload failed', description: (err as Error).message, variant: 'destructive' });
+    } finally {
+      setUploadingImage(false);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      const url = await uploadFileToStorage(file);
+      setDownloadForm((prev) => ({
+        ...prev,
+        downloadUrl: url,
+        fileName: prev.fileName || file.name,
+        fileSize: file.size,
+      }));
+      toast({ title: 'File uploaded — name, size and URL filled automatically' });
+    } catch (err: unknown) {
+      toast({ title: 'Upload failed', description: (err as Error).message, variant: 'destructive' });
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const f = (key: keyof ProductInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
 
@@ -484,8 +581,61 @@ export default function AdminProducts() {
                   <Input type="number" value={form.trialDays ?? ''} onChange={(e) => setForm((p) => ({ ...p, trialDays: e.target.value ? Number(e.target.value) : undefined }))} />
                 </div>
                 <div className="space-y-1 col-span-2">
-                  <Label>Image URL</Label>
-                  <Input value={form.imageUrl ?? ''} onChange={f('imageUrl')} placeholder="https://…" />
+                  <Label>Product Image</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={form.imageUrl ?? ''}
+                      onChange={f('imageUrl')}
+                      placeholder="https://… or upload below"
+                      className="flex-1"
+                    />
+                    {form.imageUrl && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0"
+                        onClick={() => setForm((p) => ({ ...p, imageUrl: '' }))}
+                        title="Clear image"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 mt-1">
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleImageUpload}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      disabled={uploadingImage}
+                      onClick={() => imageInputRef.current?.click()}
+                    >
+                      {uploadingImage ? (
+                        <span className="animate-pulse">Uploading…</span>
+                      ) : (
+                        <><Upload className="h-3.5 w-3.5" /> Upload Image</>
+                      )}
+                    </Button>
+                    {form.imageUrl && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        <img
+                          src={form.imageUrl}
+                          alt="preview"
+                          className="h-8 w-8 rounded object-cover border"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1 col-span-2">
                   <Label>Intro Video URL</Label>
@@ -705,6 +855,32 @@ export default function AdminProducts() {
             <SheetTitle>{editingDownload ? 'Edit Download' : 'Add Download File'}</SheetTitle>
           </SheetHeader>
           <div className="space-y-4 py-4">
+            {/* Upload file to storage */}
+            <div className="rounded-md border border-dashed p-4 space-y-2 bg-muted/30">
+              <p className="text-sm font-medium">Upload File</p>
+              <p className="text-xs text-muted-foreground">Uploads the file and auto-fills name, size and URL below.</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                disabled={uploadingFile}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {uploadingFile ? (
+                  <span className="animate-pulse">Uploading…</span>
+                ) : (
+                  <><Upload className="h-3.5 w-3.5" /> Choose & Upload File</>
+                )}
+              </Button>
+            </div>
+
             <div className="space-y-1">
               <Label>File Name *</Label>
               <Input
@@ -718,7 +894,7 @@ export default function AdminProducts() {
               <Input
                 value={downloadForm.downloadUrl}
                 onChange={(e) => setDownloadForm((p) => ({ ...p, downloadUrl: e.target.value }))}
-                placeholder="https://…"
+                placeholder="https://… or use Upload above"
               />
             </div>
             <div className="space-y-1">
