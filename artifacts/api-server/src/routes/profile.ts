@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, licensesTable, productsTable } from "@workspace/db";
+import { db, usersTable, licensesTable, productsTable, customerEntitlementsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { hashPassword, comparePassword, formatUserProfile } from "../lib/auth";
@@ -75,6 +75,28 @@ router.patch("/profile/language", requireAuth, async (req, res): Promise<void> =
     .set({ language: parsed.data.language })
     .where(eq(usersTable.id, req.user!.userId));
   res.json({ message: "Language updated successfully" });
+});
+
+// Customer: read own entitlements (limits set by admin)
+router.get("/my/entitlements", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.user!.userId;
+  const [ent] = await db
+    .select({
+      maxStores: customerEntitlementsTable.maxStores,
+      maxUsers: customerEntitlementsTable.maxUsers,
+      storageGb: customerEntitlementsTable.storageGb,
+      updatedAt: customerEntitlementsTable.updatedAt,
+    })
+    .from(customerEntitlementsTable)
+    .where(eq(customerEntitlementsTable.userId, userId));
+
+  // null for all = unlimited (defaults when no row exists)
+  res.json({
+    maxStores: ent?.maxStores ?? null,
+    maxUsers: ent?.maxUsers ?? null,
+    storageGb: ent?.storageGb ?? null,
+    updatedAt: ent?.updatedAt ?? null,
+  });
 });
 
 // Customer: read own downloads (files for products with active licenses)

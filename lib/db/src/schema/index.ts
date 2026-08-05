@@ -6,3 +6,4 @@ export * from "./subscriptions";
 export * from "./support";
 export * from "./content";
 export * from "./notifications";
+export * from "./entitlements";

@@ -28,6 +28,16 @@ async function request<T>(
 }
 
 export const adminApi = {
+  // Entitlements
+  getCustomerEntitlements: (userId: number) =>
+    request<CustomerEntitlementsResponse>(`/admin/customers/${userId}/entitlements`),
+  updateCustomerEntitlements: (userId: number, body: EntitlementsInput) =>
+    request<CustomerEntitlement>(`/admin/customers/${userId}/entitlements`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  getMyEntitlements: () => request<MyEntitlements>("/my/entitlements"),
+
   // Stats
   getStats: () => request<AdminStats>("/admin/stats"),
   getMonthlyLicenses: () => request<{ data: MonthlyLicenseCount[] }>("/admin/stats/monthly-licenses"),
@@ -173,6 +183,43 @@ export interface ProductLicenseCount {
 export interface MonthlyLicenseCount {
   month: string; // "YYYY-MM"
   count: number;
+}
+
+export interface CustomerEntitlement {
+  id?: number;
+  userId: number;
+  maxStores: number | null;
+  maxUsers: number | null;
+  storageGb: number | null;
+  updatedAt: string | null;
+  updatedBy: number | null;
+}
+
+export interface EntitlementHistoryEntry {
+  id: number;
+  oldValues: { maxStores: number | null; maxUsers: number | null; storageGb: number | null } | null;
+  newValues: { maxStores: number | null; maxUsers: number | null; storageGb: number | null };
+  createdAt: string;
+  changedByEmail: string | null;
+  changedByName: string | null;
+}
+
+export interface CustomerEntitlementsResponse {
+  entitlements: CustomerEntitlement;
+  history: EntitlementHistoryEntry[];
+}
+
+export interface EntitlementsInput {
+  maxStores?: number | null;
+  maxUsers?: number | null;
+  storageGb?: number | null;
+}
+
+export interface MyEntitlements {
+  maxStores: number | null;
+  maxUsers: number | null;
+  storageGb: number | null;
+  updatedAt: string | null;
 }
 
 export interface AdminStats {

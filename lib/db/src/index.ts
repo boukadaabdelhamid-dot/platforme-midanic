@@ -27,6 +27,30 @@ async function ensureUploadedAssetsSchema(): Promise<void> {
   `);
 }
 
+async function ensureEntitlementsSchema(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "customer_entitlements" (
+      "id" serial PRIMARY KEY NOT NULL,
+      "user_id" integer NOT NULL UNIQUE REFERENCES "users"("id") ON DELETE CASCADE,
+      "max_stores" integer,
+      "max_users" integer,
+      "storage_gb" integer,
+      "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+      "updated_by" integer REFERENCES "users"("id") ON DELETE SET NULL
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "entitlement_history" (
+      "id" serial PRIMARY KEY NOT NULL,
+      "user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "changed_by" integer REFERENCES "users"("id") ON DELETE SET NULL,
+      "old_values" jsonb,
+      "new_values" jsonb NOT NULL,
+      "created_at" timestamp with time zone DEFAULT now() NOT NULL
+    )
+  `);
+}
+
 async function ensureProductManagementSchema(): Promise<void> {
   const client = await pool.connect();
   try {
@@ -254,10 +278,11 @@ export async function runMigrations(): Promise<void> {
   }
 
   await migrate(db, { migrationsFolder });
-  // This runs after Drizzle migrations so it also covers a brand-new
+  // These run after Drizzle migrations so they also cover a brand-new
   // database, where the products table did not exist during the bootstrap
   // detection above.
   await ensureUploadedAssetsSchema();
+  await ensureEntitlementsSchema();
 }
 
 export * from "./schema";

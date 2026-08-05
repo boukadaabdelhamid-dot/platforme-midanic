@@ -15,6 +15,8 @@ import {
   newsletterSubscribersTable,
   supportTicketsTable,
   ticketMessagesTable,
+  customerEntitlementsTable,
+  entitlementHistoryTable,
 } from "@workspace/db";
 import { eq, ne, desc, count, ilike, or, sql, and, gte, lte, lt } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -247,6 +249,99 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
     return;
   }
   res.json(updated);
+});
+
+// ── CUSTOMER ENTITLEMENTS ──────────────────────────────────────────────────
+router.get("/admin/customers/:id/entitlements", async (req, res): Promise<void> => {
+  const userId = Number(req.params.id);
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid user id" }); return; }
+
+  const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const [ent] = await db
+    .select()
+    .from(customerEntitlementsTable)
+    .where(eq(customerEntitlementsTable.userId, userId));
+
+  // Return defaults (all null = unlimited) if no row exists yet
+  const entitlements = ent ?? {
+    userId,
+    maxStores: null,
+    maxUsers: null,
+    storageGb: null,
+    updatedAt: null,
+    updatedBy: null,
+  };
+
+  // Fetch change history
+  const history = await db
+    .select({
+      id: entitlementHistoryTable.id,
+      oldValues: entitlementHistoryTable.oldValues,
+      newValues: entitlementHistoryTable.newValues,
+      createdAt: entitlementHistoryTable.createdAt,
+      changedByEmail: usersTable.email,
+      changedByName: usersTable.firstName,
+    })
+    .from(entitlementHistoryTable)
+    .leftJoin(usersTable, eq(entitlementHistoryTable.changedBy, usersTable.id))
+    .where(eq(entitlementHistoryTable.userId, userId))
+    .orderBy(desc(entitlementHistoryTable.createdAt))
+    .limit(20);
+
+  res.json({ entitlements, history });
+});
+
+router.patch("/admin/customers/:id/entitlements", async (req, res): Promise<void> => {
+  const userId = Number(req.params.id);
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid user id" }); return; }
+
+  const adminId = req.user!.userId;
+  const { maxStores, maxUsers, storageGb } = req.body as {
+    maxStores?: number | null;
+    maxUsers?: number | null;
+    storageGb?: number | null;
+  };
+
+  const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  // Get current entitlements for history
+  const [current] = await db
+    .select()
+    .from(customerEntitlementsTable)
+    .where(eq(customerEntitlementsTable.userId, userId));
+
+  const oldValues = current
+    ? { maxStores: current.maxStores, maxUsers: current.maxUsers, storageGb: current.storageGb }
+    : null;
+
+  const newValues = {
+    maxStores: maxStores !== undefined ? maxStores : (current?.maxStores ?? null),
+    maxUsers: maxUsers !== undefined ? maxUsers : (current?.maxUsers ?? null),
+    storageGb: storageGb !== undefined ? storageGb : (current?.storageGb ?? null),
+  };
+
+  // Upsert entitlements
+  const [upserted] = await db
+    .insert(customerEntitlementsTable)
+    .values({ userId, ...newValues, updatedBy: adminId, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: customerEntitlementsTable.userId,
+      set: { ...newValues, updatedBy: adminId, updatedAt: new Date() },
+    })
+    .returning();
+
+  // Record history
+  await db.insert(entitlementHistoryTable).values({
+    userId,
+    changedBy: adminId,
+    oldValues,
+    newValues,
+  });
+
+  res.json(upserted);
 });
 
 // ── PRODUCTS ───────────────────────────────────────────────────────────────
