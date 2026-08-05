@@ -43,7 +43,7 @@ ENV NODE_ENV=production
 # Railway injects PORT at runtime; fall back to 8080 for local docker run
 ENV PORT=8080
 
-# Copy the esbuild bundle (includes pino workers as sibling .mjs files)
+# Copy the esbuild bundle (includes pino workers and migration SQL files)
 COPY --from=builder /app/artifacts/api-server/dist ./dist
 
 # Copy the built frontend so the API can serve it as static files

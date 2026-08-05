@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, cp } from "node:fs/promises";
 
 // Orval 8.23+ generates Zod v4 syntax (zod.int(), zod.email()); redirect exact 'zod'
 // imports to 'zod/v4' at bundle time. Using a plugin (not the alias option) because
@@ -139,7 +139,17 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   });
 }
 
-buildAll().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+buildAll()
+  .then(async () => {
+    // Copy Drizzle migration files into dist so the bundled server can apply
+    // them at runtime without needing the source tree.
+    const workspaceRoot = path.resolve(artifactDir, "../..");
+    const migrationsSource = path.resolve(workspaceRoot, "lib/db/drizzle");
+    const migrationsTarget = path.resolve(artifactDir, "dist/drizzle");
+    await cp(migrationsSource, migrationsTarget, { recursive: true });
+    console.log("Copied migrations → dist/drizzle");
+  })
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
