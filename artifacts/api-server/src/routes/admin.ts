@@ -3,6 +3,8 @@ import { db } from "@workspace/db";
 import {
   usersTable,
   productsTable,
+  productVersionsTable,
+  downloadFilesTable,
   licensesTable,
   subscriptionsTable,
   blogPostsTable,
@@ -162,6 +164,7 @@ router.patch("/admin/products/:id", async (req, res): Promise<void> => {
   }
   const allowed = [
     "name", "slug", "description", "shortDescription", "category",
+    "imageUrl", "videoUrl", "defaultLicenseType",
     "featured", "published", "trialDays", "basePrice", "sortOrder",
   ];
   const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -189,6 +192,161 @@ router.delete("/admin/products/:id", async (req, res): Promise<void> => {
     return;
   }
   await db.delete(productsTable).where(eq(productsTable.id, id));
+  res.status(204).end();
+});
+
+// ── PRODUCT VERSIONS ───────────────────────────────────────────────────────
+router.get("/admin/products/:productId/versions", async (req, res): Promise<void> => {
+  const productId = Number(req.params.productId);
+  if (isNaN(productId)) { res.status(400).json({ error: "Invalid product id" }); return; }
+  const versions = await db
+    .select()
+    .from(productVersionsTable)
+    .where(eq(productVersionsTable.productId, productId))
+    .orderBy(desc(productVersionsTable.releasedAt));
+  res.json(versions);
+});
+
+router.post("/admin/products/:productId/versions", async (req, res): Promise<void> => {
+  const productId = Number(req.params.productId);
+  if (isNaN(productId)) { res.status(400).json({ error: "Invalid product id" }); return; }
+  const { version, releaseNotes, isLatest, releasedAt } = req.body as Record<string, unknown>;
+  if (!version) { res.status(400).json({ error: "version is required" }); return; }
+
+  // If this version is set as latest, clear existing latest flag
+  if (isLatest) {
+    await db
+      .update(productVersionsTable)
+      .set({ isLatest: false })
+      .where(eq(productVersionsTable.productId, productId));
+  }
+
+  const [created] = await db
+    .insert(productVersionsTable)
+    .values({
+      productId,
+      version: String(version),
+      releaseNotes: releaseNotes ? String(releaseNotes) : null,
+      isLatest: Boolean(isLatest ?? false),
+      releasedAt: releasedAt ? new Date(String(releasedAt)) : new Date(),
+    })
+    .returning();
+  res.status(201).json(created);
+});
+
+router.patch("/admin/products/:productId/versions/:versionId", async (req, res): Promise<void> => {
+  const productId = Number(req.params.productId);
+  const versionId = Number(req.params.versionId);
+  if (isNaN(productId) || isNaN(versionId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const updates: Record<string, unknown> = {};
+  if ("version" in req.body) updates.version = String(req.body.version);
+  if ("releaseNotes" in req.body) updates.releaseNotes = req.body.releaseNotes ? String(req.body.releaseNotes) : null;
+  if ("releasedAt" in req.body) updates.releasedAt = new Date(String(req.body.releasedAt));
+
+  // Handle isLatest: clear others first
+  if ("isLatest" in req.body && Boolean(req.body.isLatest)) {
+    await db
+      .update(productVersionsTable)
+      .set({ isLatest: false })
+      .where(eq(productVersionsTable.productId, productId));
+    updates.isLatest = true;
+  } else if ("isLatest" in req.body) {
+    updates.isLatest = Boolean(req.body.isLatest);
+  }
+
+  const [updated] = await db
+    .update(productVersionsTable)
+    .set(updates)
+    .where(eq(productVersionsTable.id, versionId))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Version not found" }); return; }
+  res.json(updated);
+});
+
+router.delete("/admin/products/:productId/versions/:versionId", async (req, res): Promise<void> => {
+  const versionId = Number(req.params.versionId);
+  if (isNaN(versionId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  await db.delete(productVersionsTable).where(eq(productVersionsTable.id, versionId));
+  res.status(204).end();
+});
+
+router.post("/admin/products/:productId/versions/:versionId/set-latest", async (req, res): Promise<void> => {
+  const productId = Number(req.params.productId);
+  const versionId = Number(req.params.versionId);
+  if (isNaN(productId) || isNaN(versionId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  // Clear all latest flags for this product, then set the chosen one
+  await db
+    .update(productVersionsTable)
+    .set({ isLatest: false })
+    .where(eq(productVersionsTable.productId, productId));
+  const [updated] = await db
+    .update(productVersionsTable)
+    .set({ isLatest: true })
+    .where(eq(productVersionsTable.id, versionId))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Version not found" }); return; }
+  res.json(updated);
+});
+
+// ── PRODUCT DOWNLOADS ──────────────────────────────────────────────────────
+router.get("/admin/products/:productId/downloads", async (req, res): Promise<void> => {
+  const productId = Number(req.params.productId);
+  if (isNaN(productId)) { res.status(400).json({ error: "Invalid product id" }); return; }
+  const files = await db
+    .select()
+    .from(downloadFilesTable)
+    .where(eq(downloadFilesTable.productId, productId))
+    .orderBy(desc(downloadFilesTable.createdAt));
+  res.json(files);
+});
+
+router.post("/admin/products/:productId/downloads", async (req, res): Promise<void> => {
+  const productId = Number(req.params.productId);
+  if (isNaN(productId)) { res.status(400).json({ error: "Invalid product id" }); return; }
+  const { fileName, fileSize, platform, version, downloadUrl, versionId, isPublic } = req.body as Record<string, unknown>;
+  if (!fileName || !downloadUrl || !platform) {
+    res.status(400).json({ error: "fileName, downloadUrl and platform are required" });
+    return;
+  }
+  const [created] = await db
+    .insert(downloadFilesTable)
+    .values({
+      productId,
+      fileName: String(fileName),
+      fileSize: fileSize ? Number(fileSize) : 0,
+      platform: String(platform),
+      version: version ? String(version) : null,
+      downloadUrl: String(downloadUrl),
+      versionId: versionId ? Number(versionId) : null,
+      isPublic: Boolean(isPublic ?? true),
+    })
+    .returning();
+  res.status(201).json(created);
+});
+
+router.patch("/admin/products/:productId/downloads/:fileId", async (req, res): Promise<void> => {
+  const fileId = Number(req.params.fileId);
+  if (isNaN(fileId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const allowed = ["fileName", "fileSize", "platform", "version", "downloadUrl", "versionId", "isPublic"];
+  const updates: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (key in req.body) updates[key] = req.body[key];
+  }
+  const [updated] = await db
+    .update(downloadFilesTable)
+    .set(updates)
+    .where(eq(downloadFilesTable.id, fileId))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Download file not found" }); return; }
+  res.json(updated);
+});
+
+router.delete("/admin/products/:productId/downloads/:fileId", async (req, res): Promise<void> => {
+  const fileId = Number(req.params.fileId);
+  if (isNaN(fileId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  await db.delete(downloadFilesTable).where(eq(downloadFilesTable.id, fileId));
   res.status(204).end();
 });
 

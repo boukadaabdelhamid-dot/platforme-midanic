@@ -11,6 +11,7 @@ export const productsTable = pgTable("products", {
   category: text("category").notNull().default("software"),
   imageUrl: text("image_url"),
   videoUrl: text("video_url"),
+  defaultLicenseType: text("default_license_type"),
   featured: boolean("featured").notNull().default(false),
   published: boolean("published").notNull().default(true),
   trialDays: integer("trial_days"),

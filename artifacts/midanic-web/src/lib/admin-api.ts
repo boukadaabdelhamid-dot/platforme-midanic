@@ -45,6 +45,28 @@ export const adminApi = {
     request<AdminProduct>(`/admin/products/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteProduct: (id: number) => request<void>(`/admin/products/${id}`, { method: "DELETE" }),
 
+  // Product Versions
+  listProductVersions: (productId: number) =>
+    request<AdminProductVersion[]>(`/admin/products/${productId}/versions`),
+  createProductVersion: (productId: number, body: VersionInput) =>
+    request<AdminProductVersion>(`/admin/products/${productId}/versions`, { method: "POST", body: JSON.stringify(body) }),
+  updateProductVersion: (productId: number, versionId: number, body: Partial<VersionInput>) =>
+    request<AdminProductVersion>(`/admin/products/${productId}/versions/${versionId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteProductVersion: (productId: number, versionId: number) =>
+    request<void>(`/admin/products/${productId}/versions/${versionId}`, { method: "DELETE" }),
+  setLatestVersion: (productId: number, versionId: number) =>
+    request<AdminProductVersion>(`/admin/products/${productId}/versions/${versionId}/set-latest`, { method: "POST" }),
+
+  // Product Downloads
+  listProductDownloads: (productId: number) =>
+    request<AdminDownloadFile[]>(`/admin/products/${productId}/downloads`),
+  createProductDownload: (productId: number, body: DownloadInput) =>
+    request<AdminDownloadFile>(`/admin/products/${productId}/downloads`, { method: "POST", body: JSON.stringify(body) }),
+  updateProductDownload: (productId: number, fileId: number, body: Partial<DownloadInput>) =>
+    request<AdminDownloadFile>(`/admin/products/${productId}/downloads/${fileId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteProductDownload: (productId: number, fileId: number) =>
+    request<void>(`/admin/products/${productId}/downloads/${fileId}`, { method: "DELETE" }),
+
   // Licenses
   listLicenses: (params?: { page?: number; limit?: number }) =>
     request<LicenseListResponse>(`/admin/licenses?${new URLSearchParams(cleanParams(params)).toString()}`),
@@ -145,6 +167,9 @@ export interface AdminProduct {
   description: string;
   shortDescription: string | null;
   category: string;
+  imageUrl: string | null;
+  videoUrl: string | null;
+  defaultLicenseType: string | null;
   featured: boolean;
   published: boolean;
   trialDays: number | null;
@@ -159,11 +184,55 @@ export interface ProductInput {
   description: string;
   shortDescription?: string;
   category: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  defaultLicenseType?: string;
   featured?: boolean;
   published?: boolean;
   trialDays?: number;
   basePrice?: number;
   sortOrder?: number;
+}
+
+export interface AdminProductVersion {
+  id: number;
+  productId: number;
+  version: string;
+  releaseNotes: string | null;
+  isLatest: boolean;
+  releasedAt: string;
+  createdAt: string;
+}
+
+export interface VersionInput {
+  version: string;
+  releaseNotes?: string;
+  isLatest?: boolean;
+  releasedAt?: string;
+}
+
+export interface AdminDownloadFile {
+  id: number;
+  productId: number;
+  versionId: number | null;
+  fileName: string;
+  fileSize: number;
+  platform: string;
+  version: string | null;
+  downloadUrl: string;
+  downloadCount: number;
+  isPublic: boolean;
+  createdAt: string;
+}
+
+export interface DownloadInput {
+  fileName: string;
+  fileSize?: number;
+  platform: string;
+  version?: string;
+  downloadUrl: string;
+  versionId?: number;
+  isPublic?: boolean;
 }
 
 export interface AdminLicense {
