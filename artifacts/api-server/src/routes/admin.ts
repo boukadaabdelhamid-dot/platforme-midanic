@@ -16,7 +16,7 @@ import {
   supportTicketsTable,
   ticketMessagesTable,
 } from "@workspace/db";
-import { eq, ne, desc, count, ilike, or, sql, and } from "drizzle-orm";
+import { eq, ne, desc, count, ilike, or, sql, and, gte, lte, lt } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -26,7 +26,25 @@ router.use("/admin", requireAuth, requireRole("super_admin"));
 
 // ── ADMIN STATS ────────────────────────────────────────────────────────────
 router.get("/admin/stats", async (_req, res): Promise<void> => {
-  const [[usersRow], [productsRow], [licensesRow], [ticketsRow]] = await Promise.all([
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(todayStart.getTime() + 86_400_000);
+  const in14Days = new Date(now.getTime() + 14 * 86_400_000);
+  const in30Days = new Date(now.getTime() + 30 * 86_400_000);
+
+  const [
+    [usersRow],
+    [productsRow],
+    [licensesRow],
+    [ticketsRow],
+    [newThisMonthRow],
+    [expiringIn30Row],
+    [expiringTodayRow],
+    recentLicenses,
+    expiringIn14Days,
+    byProduct,
+  ] = await Promise.all([
     db.select({ total: count() }).from(usersTable),
     db.select({ total: count() }).from(productsTable),
     db.select({ total: count() }).from(licensesTable).where(eq(licensesTable.status, "active")),
@@ -34,12 +52,132 @@ router.get("/admin/stats", async (_req, res): Promise<void> => {
       .select({ total: count() })
       .from(supportTicketsTable)
       .where(sql`${supportTicketsTable.status} IN ('open','in_progress')`),
+    // New licenses this month
+    db
+      .select({ total: count() })
+      .from(licensesTable)
+      .where(gte(licensesTable.createdAt, monthStart)),
+    // Active licenses expiring in next 30 days
+    db
+      .select({ total: count() })
+      .from(licensesTable)
+      .where(
+        and(
+          eq(licensesTable.status, "active"),
+          gte(licensesTable.expiresAt, now),
+          lte(licensesTable.expiresAt, in30Days)
+        )
+      ),
+    // Active licenses expiring today
+    db
+      .select({ total: count() })
+      .from(licensesTable)
+      .where(
+        and(
+          eq(licensesTable.status, "active"),
+          gte(licensesTable.expiresAt, todayStart),
+          lt(licensesTable.expiresAt, todayEnd)
+        )
+      ),
+    // Recent 10 licenses
+    db
+      .select({
+        id: licensesTable.id,
+        licenseKey: licensesTable.key,
+        type: licensesTable.type,
+        status: licensesTable.status,
+        createdAt: licensesTable.createdAt,
+        expiresAt: licensesTable.expiresAt,
+        userEmail: usersTable.email,
+        userFirstName: usersTable.firstName,
+        userLastName: usersTable.lastName,
+        productName: productsTable.name,
+      })
+      .from(licensesTable)
+      .leftJoin(usersTable, eq(licensesTable.userId, usersTable.id))
+      .leftJoin(productsTable, eq(licensesTable.productId, productsTable.id))
+      .orderBy(desc(licensesTable.createdAt))
+      .limit(10),
+    // Licenses expiring in next 14 days
+    db
+      .select({
+        id: licensesTable.id,
+        licenseKey: licensesTable.key,
+        type: licensesTable.type,
+        expiresAt: licensesTable.expiresAt,
+        userEmail: usersTable.email,
+        userFirstName: usersTable.firstName,
+        productName: productsTable.name,
+      })
+      .from(licensesTable)
+      .leftJoin(usersTable, eq(licensesTable.userId, usersTable.id))
+      .leftJoin(productsTable, eq(licensesTable.productId, productsTable.id))
+      .where(
+        and(
+          eq(licensesTable.status, "active"),
+          gte(licensesTable.expiresAt, now),
+          lte(licensesTable.expiresAt, in14Days)
+        )
+      )
+      .orderBy(licensesTable.expiresAt)
+      .limit(20),
+    // License count by product
+    db
+      .select({
+        productName: productsTable.name,
+        count: count(),
+      })
+      .from(licensesTable)
+      .leftJoin(productsTable, eq(licensesTable.productId, productsTable.id))
+      .where(eq(licensesTable.status, "active"))
+      .groupBy(productsTable.name),
   ]);
+
   res.json({
     totalUsers: Number(usersRow?.total ?? 0),
     totalProducts: Number(productsRow?.total ?? 0),
     activeLicenses: Number(licensesRow?.total ?? 0),
     openTickets: Number(ticketsRow?.total ?? 0),
+    newThisMonth: Number(newThisMonthRow?.total ?? 0),
+    expiringIn30Days: Number(expiringIn30Row?.total ?? 0),
+    expiringToday: Number(expiringTodayRow?.total ?? 0),
+    recentLicenses,
+    expiringIn14Days,
+    byProduct: byProduct.map((r) => ({
+      productName: r.productName ?? "Unknown",
+      count: Number(r.count),
+    })),
+  });
+});
+
+router.get("/admin/stats/monthly-licenses", async (_req, res): Promise<void> => {
+  // Generate last 6 months as labels
+  const months: { label: string; start: Date; end: Date }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    const start = new Date(d.getFullYear(), d.getMonth(), 1);
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    months.push({
+      label: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      start,
+      end,
+    });
+  }
+
+  const counts = await Promise.all(
+    months.map(({ start, end }) =>
+      db
+        .select({ total: count() })
+        .from(licensesTable)
+        .where(and(gte(licensesTable.createdAt, start), lt(licensesTable.createdAt, end)))
+        .then(([row]) => Number(row?.total ?? 0))
+    )
+  );
+
+  res.json({
+    data: months.map(({ label }, i) => ({ month: label, count: counts[i] })),
   });
 });
 

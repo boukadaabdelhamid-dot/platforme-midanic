@@ -30,6 +30,7 @@ async function request<T>(
 export const adminApi = {
   // Stats
   getStats: () => request<AdminStats>("/admin/stats"),
+  getMonthlyLicenses: () => request<{ data: MonthlyLicenseCount[] }>("/admin/stats/monthly-licenses"),
 
   // Users
   listUsers: (params?: { page?: number; limit?: number; search?: string }) =>
@@ -141,11 +142,50 @@ function cleanParams(obj?: Record<string, unknown>): Record<string, string> {
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
+export interface RecentLicense {
+  id: number;
+  licenseKey: string;
+  type: string;
+  status: string;
+  createdAt: string;
+  userEmail: string | null;
+  userFirstName: string | null;
+  userLastName: string | null;
+  productName: string | null;
+  expiresAt: string | null;
+}
+
+export interface ExpiringLicense {
+  id: number;
+  licenseKey: string;
+  type: string;
+  expiresAt: string | null;
+  userEmail: string | null;
+  userFirstName: string | null;
+  productName: string | null;
+}
+
+export interface ProductLicenseCount {
+  productName: string;
+  count: number;
+}
+
+export interface MonthlyLicenseCount {
+  month: string; // "YYYY-MM"
+  count: number;
+}
+
 export interface AdminStats {
   totalUsers: number;
   totalProducts: number;
   activeLicenses: number;
   openTickets: number;
+  newThisMonth: number;
+  expiringIn30Days: number;
+  expiringToday: number;
+  recentLicenses: RecentLicense[];
+  expiringIn14Days: ExpiringLicense[];
+  byProduct: ProductLicenseCount[];
 }
 
 export interface AdminUser {
