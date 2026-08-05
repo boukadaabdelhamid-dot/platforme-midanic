@@ -402,6 +402,174 @@ router.delete("/admin/products/:productId/downloads/:fileId", async (req, res): 
 });
 
 // ── LICENSES & SUBSCRIPTIONS ───────────────────────────────────────────────
+
+/** Compute expiry date from license type. Returns null for lifetime licenses. */
+function computeExpiresAt(type: string): Date | null {
+  const daysMap: Record<string, number | null> = {
+    trial: 14,
+    monthly: 30,
+    quarterly: 90,
+    semi_annual: 180,
+    yearly: 365,
+    lifetime: null,
+  };
+  const days = daysMap[type];
+  if (days === null || days === undefined) return null;
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+/** Generate a license key in the format XXXX-XXXX-XXXX-XXXX */
+function generateLicenseKey(): string {
+  const seg = () =>
+    Math.random().toString(36).toUpperCase().slice(2, 6).padEnd(4, "0");
+  return `${seg()}-${seg()}-${seg()}-${seg()}`;
+}
+
+router.post("/admin/licenses", async (req, res): Promise<void> => {
+  const { userId, productId, type, maxDevices, notes } = req.body as {
+    userId?: number;
+    productId: number;
+    type: string;
+    maxDevices?: number;
+    notes?: string;
+  };
+
+  if (!productId || !type) {
+    res.status(400).json({ error: "productId and type are required" });
+    return;
+  }
+
+  const validTypes = ["trial", "monthly", "quarterly", "semi_annual", "yearly", "lifetime"];
+  if (!validTypes.includes(type)) {
+    res.status(400).json({ error: `type must be one of: ${validTypes.join(", ")}` });
+    return;
+  }
+
+  // Verify product exists
+  const [product] = await db.select({ id: productsTable.id }).from(productsTable).where(eq(productsTable.id, productId));
+  if (!product) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+
+  // Verify user exists (if provided)
+  if (userId) {
+    const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, userId));
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+  }
+
+  const key = generateLicenseKey();
+  const expiresAt = computeExpiresAt(type);
+
+  const [license] = await db
+    .insert(licensesTable)
+    .values({
+      key,
+      userId: userId ?? null,
+      productId,
+      type: type as "trial" | "monthly" | "quarterly" | "semi_annual" | "yearly" | "lifetime",
+      status: "active",
+      maxDevices: maxDevices ?? 1,
+      activatedDevices: 0,
+      expiresAt,
+    })
+    .returning();
+
+  // Return with joined user/product data
+  const [full] = await db
+    .select({
+      id: licensesTable.id,
+      licenseKey: licensesTable.key,
+      userId: licensesTable.userId,
+      productId: licensesTable.productId,
+      type: licensesTable.type,
+      status: licensesTable.status,
+      maxDevices: licensesTable.maxDevices,
+      activatedDevices: licensesTable.activatedDevices,
+      expiresAt: licensesTable.expiresAt,
+      createdAt: licensesTable.createdAt,
+      userEmail: usersTable.email,
+      userFirstName: usersTable.firstName,
+      userLastName: usersTable.lastName,
+      productName: productsTable.name,
+    })
+    .from(licensesTable)
+    .leftJoin(usersTable, eq(licensesTable.userId, usersTable.id))
+    .leftJoin(productsTable, eq(licensesTable.productId, productsTable.id))
+    .where(eq(licensesTable.id, license.id));
+
+  res.status(201).json(full);
+});
+
+router.patch("/admin/licenses/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { status, maxDevices } = req.body as { status?: string; maxDevices?: number };
+
+  const validStatuses = ["active", "suspended", "revoked", "expired"];
+  if (status && !validStatuses.includes(status)) {
+    res.status(400).json({ error: `status must be one of: ${validStatuses.join(", ")}` });
+    return;
+  }
+
+  const updates: Record<string, unknown> = {};
+  if (status) updates.status = status;
+  if (maxDevices !== undefined) updates.maxDevices = maxDevices;
+
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No valid fields to update" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(licensesTable)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .set(updates as any)
+    .where(eq(licensesTable.id, id))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "License not found" }); return; }
+
+  // Return with joined user/product data
+  const [full] = await db
+    .select({
+      id: licensesTable.id,
+      licenseKey: licensesTable.key,
+      userId: licensesTable.userId,
+      productId: licensesTable.productId,
+      type: licensesTable.type,
+      status: licensesTable.status,
+      maxDevices: licensesTable.maxDevices,
+      activatedDevices: licensesTable.activatedDevices,
+      expiresAt: licensesTable.expiresAt,
+      createdAt: licensesTable.createdAt,
+      userEmail: usersTable.email,
+      userFirstName: usersTable.firstName,
+      userLastName: usersTable.lastName,
+      productName: productsTable.name,
+    })
+    .from(licensesTable)
+    .leftJoin(usersTable, eq(licensesTable.userId, usersTable.id))
+    .leftJoin(productsTable, eq(licensesTable.productId, productsTable.id))
+    .where(eq(licensesTable.id, id));
+
+  res.json(full);
+});
+
+router.delete("/admin/licenses/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [deleted] = await db.delete(licensesTable).where(eq(licensesTable.id, id)).returning({ id: licensesTable.id });
+  if (!deleted) { res.status(404).json({ error: "License not found" }); return; }
+  res.status(204).send();
+});
+
 router.get("/admin/licenses", async (req, res): Promise<void> => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Number(req.query.limit) || 20);
