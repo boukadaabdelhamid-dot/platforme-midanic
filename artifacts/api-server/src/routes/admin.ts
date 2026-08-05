@@ -16,7 +16,7 @@ import {
   supportTicketsTable,
   ticketMessagesTable,
 } from "@workspace/db";
-import { eq, desc, count, ilike, or, sql } from "drizzle-orm";
+import { eq, desc, count, ilike, or, sql, and } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -127,6 +127,9 @@ router.post("/admin/products", async (req, res): Promise<void> => {
     description,
     shortDescription,
     category,
+    imageUrl,
+    videoUrl,
+    defaultLicenseType,
     featured,
     published,
     trialDays,
@@ -146,6 +149,9 @@ router.post("/admin/products", async (req, res): Promise<void> => {
       description: String(description),
       shortDescription: shortDescription ? String(shortDescription) : null,
       category: String(category),
+      imageUrl: imageUrl ? String(imageUrl) : null,
+      videoUrl: videoUrl ? String(videoUrl) : null,
+      defaultLicenseType: defaultLicenseType ? String(defaultLicenseType) : null,
       featured: Boolean(featured ?? false),
       published: Boolean(published ?? false),
       trialDays: trialDays ? Number(trialDays) : null,
@@ -244,30 +250,39 @@ router.patch("/admin/products/:productId/versions/:versionId", async (req, res):
   if ("releaseNotes" in req.body) updates.releaseNotes = req.body.releaseNotes ? String(req.body.releaseNotes) : null;
   if ("releasedAt" in req.body) updates.releasedAt = new Date(String(req.body.releasedAt));
 
-  // Handle isLatest: clear others first
+  // When promoting to latest: clear other flags within the same product atomically,
+  // then set the flag only on the record that belongs to this product.
   if ("isLatest" in req.body && Boolean(req.body.isLatest)) {
     await db
       .update(productVersionsTable)
       .set({ isLatest: false })
-      .where(eq(productVersionsTable.productId, productId));
+      .where(and(
+        eq(productVersionsTable.productId, productId),
+        eq(productVersionsTable.id, versionId).not(),
+      ));
     updates.isLatest = true;
   } else if ("isLatest" in req.body) {
     updates.isLatest = Boolean(req.body.isLatest);
   }
 
+  // Scope update to both id AND productId to prevent cross-product mutation
   const [updated] = await db
     .update(productVersionsTable)
     .set(updates)
-    .where(eq(productVersionsTable.id, versionId))
+    .where(and(eq(productVersionsTable.id, versionId), eq(productVersionsTable.productId, productId)))
     .returning();
   if (!updated) { res.status(404).json({ error: "Version not found" }); return; }
   res.json(updated);
 });
 
 router.delete("/admin/products/:productId/versions/:versionId", async (req, res): Promise<void> => {
+  const productId = Number(req.params.productId);
   const versionId = Number(req.params.versionId);
-  if (isNaN(versionId)) { res.status(400).json({ error: "Invalid id" }); return; }
-  await db.delete(productVersionsTable).where(eq(productVersionsTable.id, versionId));
+  if (isNaN(productId) || isNaN(versionId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  // Scope delete to productId to prevent cross-product deletion
+  await db.delete(productVersionsTable).where(
+    and(eq(productVersionsTable.id, versionId), eq(productVersionsTable.productId, productId))
+  );
   res.status(204).end();
 });
 
@@ -276,7 +291,14 @@ router.post("/admin/products/:productId/versions/:versionId/set-latest", async (
   const versionId = Number(req.params.versionId);
   if (isNaN(productId) || isNaN(versionId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  // Clear all latest flags for this product, then set the chosen one
+  // Verify the version actually belongs to this product before proceeding
+  const [target] = await db
+    .select({ id: productVersionsTable.id })
+    .from(productVersionsTable)
+    .where(and(eq(productVersionsTable.id, versionId), eq(productVersionsTable.productId, productId)));
+  if (!target) { res.status(404).json({ error: "Version not found" }); return; }
+
+  // Clear all latest flags for this product, then mark only the verified version
   await db
     .update(productVersionsTable)
     .set({ isLatest: false })
@@ -284,9 +306,8 @@ router.post("/admin/products/:productId/versions/:versionId/set-latest", async (
   const [updated] = await db
     .update(productVersionsTable)
     .set({ isLatest: true })
-    .where(eq(productVersionsTable.id, versionId))
+    .where(and(eq(productVersionsTable.id, versionId), eq(productVersionsTable.productId, productId)))
     .returning();
-  if (!updated) { res.status(404).json({ error: "Version not found" }); return; }
   res.json(updated);
 });
 
@@ -327,26 +348,44 @@ router.post("/admin/products/:productId/downloads", async (req, res): Promise<vo
 });
 
 router.patch("/admin/products/:productId/downloads/:fileId", async (req, res): Promise<void> => {
+  const productId = Number(req.params.productId);
   const fileId = Number(req.params.fileId);
-  if (isNaN(fileId)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const allowed = ["fileName", "fileSize", "platform", "version", "downloadUrl", "versionId", "isPublic"];
+  if (isNaN(productId) || isNaN(fileId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const allowed = ["fileName", "fileSize", "platform", "version", "downloadUrl", "isPublic"];
   const updates: Record<string, unknown> = {};
   for (const key of allowed) {
     if (key in req.body) updates[key] = req.body[key];
   }
+  // Validate versionId belongs to the same product before accepting it
+  if ("versionId" in req.body && req.body.versionId != null) {
+    const vid = Number(req.body.versionId);
+    const [ver] = await db
+      .select({ id: productVersionsTable.id })
+      .from(productVersionsTable)
+      .where(and(eq(productVersionsTable.id, vid), eq(productVersionsTable.productId, productId)));
+    if (!ver) { res.status(400).json({ error: "versionId does not belong to this product" }); return; }
+    updates.versionId = vid;
+  } else if ("versionId" in req.body) {
+    updates.versionId = null;
+  }
+  // Scope update to both fileId AND productId
   const [updated] = await db
     .update(downloadFilesTable)
     .set(updates)
-    .where(eq(downloadFilesTable.id, fileId))
+    .where(and(eq(downloadFilesTable.id, fileId), eq(downloadFilesTable.productId, productId)))
     .returning();
   if (!updated) { res.status(404).json({ error: "Download file not found" }); return; }
   res.json(updated);
 });
 
 router.delete("/admin/products/:productId/downloads/:fileId", async (req, res): Promise<void> => {
+  const productId = Number(req.params.productId);
   const fileId = Number(req.params.fileId);
-  if (isNaN(fileId)) { res.status(400).json({ error: "Invalid id" }); return; }
-  await db.delete(downloadFilesTable).where(eq(downloadFilesTable.id, fileId));
+  if (isNaN(productId) || isNaN(fileId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  // Scope delete to productId to prevent cross-product deletion
+  await db.delete(downloadFilesTable).where(
+    and(eq(downloadFilesTable.id, fileId), eq(downloadFilesTable.productId, productId))
+  );
   res.status(204).end();
 });
 
