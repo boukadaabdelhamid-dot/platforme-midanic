@@ -12,7 +12,7 @@
     {
       "idx": 1,
       "version": "7",
-      "when": 1785916800000,
+      "when": 1785914679000,
       "tag": "0001_add_product_fields_and_fix_fk",
       "breakpoints": true
     }
