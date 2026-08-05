@@ -64,11 +64,12 @@ export function Navbar() {
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 font-bold text-xl text-foreground hover:opacity-80 transition-opacity" data-testid="link-home">
-            <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center text-primary-foreground font-mono text-sm">
-              M
-            </div>
-            <span>Midanic</span>
+          <Link href="/" className="flex items-center hover:opacity-80 transition-opacity" data-testid="link-home" aria-label="Midanic home">
+            <img
+              src="/midanic-logo.png"
+              alt="Midanic"
+              className="h-12 w-[74px] object-contain dark:invert"
+            />
           </Link>
 
           {/* Desktop Navigation */}

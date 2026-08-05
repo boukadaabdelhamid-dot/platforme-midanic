@@ -95,9 +95,11 @@ export function Footer() {
 
         <div className="mt-12 pt-8 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-primary rounded flex items-center justify-center text-primary-foreground font-mono text-xs">
-              M
-            </div>
+            <img
+              src="/midanic-logo.png"
+              alt="Midanic"
+              className="h-12 w-[58px] object-contain dark:invert"
+            />
             <span className="text-sm text-muted-foreground">
               © {currentYear} Midanic. {t('footer.rights')}
             </span>
