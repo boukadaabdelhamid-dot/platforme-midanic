@@ -152,19 +152,25 @@ export async function runMigrations(): Promise<void> {
 
   // Detect push-bootstrapped DB: products table exists but the Drizzle
   // migrations journal is absent or empty (no applied migrations recorded).
+  // Keep the relation check separate: PostgreSQL resolves table references
+  // in a CASE subquery even when that branch would not be selected.
   const { rows } = await pool.query<{
     has_products: boolean;
-    journal_count: string;
+    has_journal: boolean;
   }>(`
     SELECT
       to_regclass('public.products') IS NOT NULL AS has_products,
-      CASE
-        WHEN to_regclass('drizzle.__drizzle_migrations') IS NULL THEN '0'
-        ELSE (SELECT count(*)::text FROM drizzle."__drizzle_migrations")
-      END AS journal_count
+      to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS has_journal
   `);
-  const { has_products, journal_count } = rows[0];
-  const hasAppliedMigrations = parseInt(journal_count, 10) > 0;
+  const { has_products, has_journal } = rows[0];
+  let hasAppliedMigrations = false;
+
+  if (has_journal) {
+    const journalCount = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM drizzle."__drizzle_migrations"`,
+    );
+    hasAppliedMigrations = Number(journalCount.rows[0]?.count ?? 0) > 0;
+  }
 
   if (has_products) {
     // Drizzle tracks applied migrations by comparing each migration's journal
