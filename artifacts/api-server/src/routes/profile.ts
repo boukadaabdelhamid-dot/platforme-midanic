@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, licensesTable, productsTable, customerEntitlementsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireRole } from "../middlewares/auth";
 import { hashPassword, comparePassword, formatUserProfile } from "../lib/auth";
 import {
   UpdateProfileBody,
   ChangePasswordBody,
+  ChangeEmailBody,
   UpdateLanguageBody,
 } from "@workspace/api-zod";
 
@@ -62,6 +63,43 @@ router.post("/profile/change-password", requireAuth, async (req, res): Promise<v
   const newHash = await hashPassword(parsed.data.newPassword);
   await db.update(usersTable).set({ passwordHash: newHash }).where(eq(usersTable.id, user.id));
   res.json({ message: "Password changed successfully" });
+});
+
+router.patch("/profile/change-email", requireAuth, requireRole("super_admin"), async (req, res): Promise<void> => {
+  const parsed = ChangeEmailBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const newEmail = parsed.data.newEmail.toLowerCase().trim();
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user!.userId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const valid = await comparePassword(parsed.data.currentPassword, user.passwordHash);
+  if (!valid) {
+    res.status(400).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+  if (newEmail !== user.email) {
+    const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, newEmail));
+    if (existing) {
+      res.status(409).json({ error: "Email is already in use" });
+      return;
+    }
+  }
+
+  const [updatedUser] = await db
+    .update(usersTable)
+    .set({ email: newEmail })
+    .where(eq(usersTable.id, user.id))
+    .returning();
+
+  res.json(formatUserProfile(updatedUser));
 });
 
 router.patch("/profile/language", requireAuth, async (req, res): Promise<void> => {

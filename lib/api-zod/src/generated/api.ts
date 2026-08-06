@@ -445,6 +445,29 @@ export const ChangePasswordResponse = zod.object({
 
 
 /**
+ * @summary Change the authenticated administrator email
+ */
+export const ChangeEmailBody = zod.object({
+  "currentPassword": zod.string(),
+  "newEmail": zod.email()
+})
+
+export const ChangeEmailResponse = zod.object({
+  "id": zod.int(),
+  "email": zod.string(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "role": zod.enum(['super_admin', 'admin', 'support', 'billing', 'customer']),
+  "language": zod.enum(['en', 'fr', 'ar']),
+  "companyName": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "twoFactorEnabled": zod.boolean().optional(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Update user preferred language
  */
 export const UpdateLanguageBody = zod.object({

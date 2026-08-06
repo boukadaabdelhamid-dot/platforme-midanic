@@ -23,6 +23,7 @@ import type {
   AuthResponse,
   BlogListResponse,
   BlogPost,
+  ChangeEmailInput,
   ChangePasswordInput,
   ContactInput,
   DemoRequestInput,
@@ -1655,6 +1656,77 @@ export const useChangePassword = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getChangePasswordMutationOptions(options));
+    }
+
+export const getChangeEmailUrl = () => {
+
+
+
+
+  return `/api/profile/change-email`
+}
+
+/**
+ * @summary Change the authenticated administrator email
+ */
+export const changeEmail = async (changeEmailInput: ChangeEmailInput, options?: Parameters<typeof customFetch>[1]): Promise<UserProfile> => {
+
+  return customFetch<UserProfile>(getChangeEmailUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(changeEmailInput)
+  }
+);}
+
+
+
+
+
+export const getChangeEmailMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeEmail>>, TError,{data: BodyType<ChangeEmailInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof changeEmail>>, TError,{data: BodyType<ChangeEmailInput>}, TContext> => {
+
+const mutationKey = ['changeEmail'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof changeEmail>>, {data: BodyType<ChangeEmailInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  changeEmail(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChangeEmailMutationResult = NonNullable<Awaited<ReturnType<typeof changeEmail>>>
+    export type ChangeEmailMutationBody = BodyType<ChangeEmailInput>
+    export type ChangeEmailMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Change the authenticated administrator email
+ */
+export const useChangeEmail = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeEmail>>, TError,{data: BodyType<ChangeEmailInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof changeEmail>>,
+        TError,
+        {data: BodyType<ChangeEmailInput>},
+        TContext
+      > => {
+      return useMutation(getChangeEmailMutationOptions(options));
     }
 
 export const getUpdateLanguageUrl = () => {

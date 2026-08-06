@@ -36,6 +36,7 @@ import AdminLicenses from '@/pages/admin/licenses';
 import AdminContent from '@/pages/admin/content';
 import AdminCRM from '@/pages/admin/crm';
 import AdminTickets from '@/pages/admin/tickets';
+import AdminSettings from '@/pages/admin/settings';
 import './i18n';
 
 const queryClient = new QueryClient({
@@ -58,6 +59,7 @@ function AdminRouter() {
         <Route path="/admin/content" component={AdminContent} />
         <Route path="/admin/crm" component={AdminCRM} />
         <Route path="/admin/tickets" component={AdminTickets} />
+        <Route path="/admin/settings" component={AdminSettings} />
       </Switch>
     </AdminLayout>
   );

@@ -9,6 +9,7 @@
 export * from './authResponse';
 export * from './blogListResponse';
 export * from './blogPost';
+export * from './changeEmailInput';
 export * from './changePasswordInput';
 export * from './contactInput';
 export * from './demoRequestInput';

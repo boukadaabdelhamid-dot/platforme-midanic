@@ -105,6 +105,11 @@ export interface ChangePasswordInput {
   newPassword: string;
 }
 
+export interface ChangeEmailInput {
+  currentPassword: string;
+  newEmail: string;
+}
+
 export type LanguageUpdateLanguage = typeof LanguageUpdateLanguage[keyof typeof LanguageUpdateLanguage];
 
 

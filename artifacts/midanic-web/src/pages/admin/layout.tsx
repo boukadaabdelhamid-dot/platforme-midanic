@@ -9,6 +9,7 @@ import {
   FileText,
   MessageSquare,
   Ticket,
+  Settings,
   ChevronLeft,
   Menu,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { href: '/admin/content', label: 'Content', icon: FileText },
   { href: '/admin/crm', label: 'CRM', icon: MessageSquare },
   { href: '/admin/tickets', label: 'Support Tickets', icon: Ticket },
+  { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
 interface AdminLayoutProps {

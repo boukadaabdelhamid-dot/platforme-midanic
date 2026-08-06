@@ -105,7 +105,14 @@ router.post("/auth/refresh", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Refresh token expired or revoked" });
     return;
   }
-  const accessToken = generateAccessToken({ userId: payload.userId, email: payload.email, role: payload.role });
+  const user = await db.query.usersTable.findFirst({
+    where: eq(usersTable.id, payload.userId),
+  });
+  if (!user || !user.isActive) {
+    res.status(401).json({ error: "User not found or inactive" });
+    return;
+  }
+  const accessToken = generateAccessToken({ userId: user.id, email: user.email, role: user.role });
   res.json({ accessToken });
 });
 
