@@ -4,3 +4,4 @@
 - [API production bundle dependencies](api-production-bundle-dependencies.md) — Docker runtime copies only dist; dependencies used by the API must be bundled or explicitly copied into the final image
 - [Legacy database migration bootstrap](legacy-database-migration-bootstrap.md) — Existing push-managed databases need idempotent schema reconciliation before timestamp-based migrations
 - [External deployment uploads](external-deployment-uploads.md) — Replit Object Storage sidecar is unavailable outside Replit; production needs a durable non-sidecar upload path
+- [Desktop license protection](desktop-license-protection.md) — Customer builds must fail closed when the local license guard is missing; never silently bypass activation
