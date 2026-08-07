@@ -1029,7 +1029,10 @@ router.get("/admin/trial-requests", async (req, res): Promise<void> => {
         productName: productsTable.name,
       })
       .from(trialRequestsTable)
-      .leftJoin(productsTable, eq(trialRequestsTable.productId, productsTable.id))
+      .leftJoin(
+        productsTable,
+        eq(trialRequestsTable.productId, sql`${productsTable.id}::text`),
+      )
       .orderBy(desc(trialRequestsTable.createdAt))
       .limit(limit)
       .offset(offset),
@@ -1072,7 +1075,10 @@ router.get("/admin/demo-requests", async (req, res): Promise<void> => {
         productName: productsTable.name,
       })
       .from(demoRequestsTable)
-      .leftJoin(productsTable, eq(demoRequestsTable.productId, productsTable.id))
+      .leftJoin(
+        productsTable,
+        eq(demoRequestsTable.productId, sql`${productsTable.id}::text`),
+      )
       .orderBy(desc(demoRequestsTable.createdAt))
       .limit(limit)
       .offset(offset),
