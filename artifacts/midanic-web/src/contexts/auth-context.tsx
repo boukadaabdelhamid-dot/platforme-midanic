@@ -132,7 +132,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const res = await fetch('/api/my/profile', {
+        // The API exposes the authenticated profile at /api/profile.
+        // Using /api/my/profile here returned 404 during a full-page reload,
+        // which made the app clear valid tokens and redirect admins to "/".
+        const res = await fetch('/api/profile', {
           headers: { Authorization: `Bearer ${token}` },
         });
 
