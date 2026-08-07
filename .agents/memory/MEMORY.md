@@ -5,3 +5,4 @@
 - [Legacy database migration bootstrap](legacy-database-migration-bootstrap.md) — Existing push-managed databases need idempotent schema reconciliation before timestamp-based migrations
 - [External deployment uploads](external-deployment-uploads.md) — Replit Object Storage sidecar is unavailable outside Replit; production needs a durable non-sidecar upload path
 - [Desktop license protection](desktop-license-protection.md) — Customer builds must fail closed when the local license guard is missing; never silently bypass activation
+- [Separate product repositories](separate-product-repositories.md) — Keep desktop-client as an independent Git repository; never push its files through the platform repository remote
