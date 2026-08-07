@@ -7,3 +7,4 @@
 - [Desktop license protection](desktop-license-protection.md) — Customer builds must fail closed when the local license guard is missing; never silently bypass activation
 - [Separate product repositories](separate-product-repositories.md) — Keep desktop-client as an independent Git repository; never push its files through the platform repository remote
 - [Midanic API routing](midanic-api-routing.md) — The web artifact needs a dev proxy for /api; production relies on path routing to the separate API artifact and must be verified after publishing
+- [R2 browser upload CORS](r2-browser-upload-cors.md) — Direct browser PUT uploads require an explicit CORS policy on the Cloudflare R2 bucket
