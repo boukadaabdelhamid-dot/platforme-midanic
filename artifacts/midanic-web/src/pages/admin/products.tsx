@@ -77,7 +77,7 @@ async function uploadFileToStorage(file: File): Promise<string> {
   }
   const { uploadURL, objectPath } = await metaRes.json() as { uploadURL: string; objectPath: string };
 
-  // Step 2: Upload directly to GCS via presigned URL
+  // Step 2: Upload directly to the configured object storage via presigned URL
   const uploadRes = await fetch(uploadURL, {
     method: 'PUT',
     body: file,
@@ -85,7 +85,7 @@ async function uploadFileToStorage(file: File): Promise<string> {
   });
   if (!uploadRes.ok) throw new Error('Failed to upload file to storage');
 
-  // Step 3: Set the object ACL to public so the serving endpoint allows access
+  // Step 3: Confirm the upload and make the stable serving path available
   const confirmRes = await fetch('/api/storage/uploads/confirm-public', {
     method: 'POST',
     headers: {

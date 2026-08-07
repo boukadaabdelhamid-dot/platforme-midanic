@@ -131,6 +131,40 @@ router.put(
   },
 );
 
+/**
+ * GET /storage/r2-objects/*
+ *
+ * Stable public download URL for objects stored in Cloudflare R2. The API
+ * signs a short-lived GET request on every access, so the database can keep a
+ * permanent path without exposing R2 credentials.
+ */
+router.get(
+  '/storage/r2-objects/*objectKey',
+  async (req: Request, res: Response) => {
+    try {
+      const raw = req.params.objectKey;
+      const encodedPath = Array.isArray(raw) ? raw.join('/') : raw;
+      const response = await objectStorageService.downloadR2Object(
+        `/r2-objects/${encodedPath}`,
+      );
+      res.status(response.status);
+      response.headers.forEach((value, key) => res.setHeader(key, value));
+      if (response.body) {
+        Readable.fromWeb(response.body as ReadableStream<Uint8Array>).pipe(res);
+      } else {
+        res.end();
+      }
+    } catch (error) {
+      if (error instanceof ObjectNotFoundError) {
+        res.status(404).json({ error: 'File not found' });
+        return;
+      }
+      req.log.error({ err: error }, 'Error serving R2 object');
+      res.status(500).json({ error: 'Failed to serve R2 object' });
+    }
+  },
+);
+
 router.get(
   '/storage/local-objects/:objectId',
   async (req: Request, res: Response) => {
@@ -212,8 +246,10 @@ router.post(
       return;
     }
     try {
-      if (objectPath.startsWith('/local-objects/')) {
+       if (objectPath.startsWith('/local-objects/')) {
         await objectStorageService.confirmLocalObject(objectPath);
+       } else if (objectPath.startsWith('/r2-objects/')) {
+         await objectStorageService.confirmR2Object(objectPath);
       } else {
         await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
           owner: 'admin',

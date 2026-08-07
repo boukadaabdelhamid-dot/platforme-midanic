@@ -1,4 +1,4 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { Readable } from 'stream';
 import { File, Storage } from '@google-cloud/storage';
 import { pool } from '@workspace/db';
@@ -48,7 +48,7 @@ export type UploadMetadata = {
 export type UploadTarget = {
   uploadURL: string;
   objectPath: string;
-  backend: 'replit' | 'local';
+  backend: 'replit' | 'r2' | 'local';
 };
 
 type LocalUploadToken = {
@@ -60,6 +60,15 @@ type LocalUploadToken = {
 
 export class ObjectStorageService {
   constructor() {}
+
+  private usesR2ObjectStorage(): boolean {
+    return Boolean(
+      process.env.CLOUDFLARE_R2_ACCOUNT_ID &&
+        process.env.CLOUDFLARE_R2_BUCKET_NAME &&
+        process.env.CLOUDFLARE_R2_ACCESS_KEY_ID &&
+        process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    );
+  }
 
   private usesReplitObjectStorage(): boolean {
     return Boolean(
@@ -137,6 +146,23 @@ export class ObjectStorageService {
   }
 
   async createUploadTarget(metadata: UploadMetadata): Promise<UploadTarget> {
+    if (this.usesR2ObjectStorage()) {
+      const objectKey = createR2ObjectKey(metadata.name);
+      return {
+        uploadURL: await createR2PresignedURL({
+          objectKey,
+          method: 'PUT',
+          contentType: metadata.contentType,
+          expiresInSeconds: 15 * 60,
+        }),
+        objectPath: `/r2-objects/${objectKey
+          .split('/')
+          .map(encodeURIComponent)
+          .join('/')}`,
+        backend: 'r2',
+      };
+    }
+
     if (this.usesReplitObjectStorage()) {
       const uploadURL = await this.getObjectEntityUploadURL();
       return {
@@ -217,6 +243,50 @@ export class ObjectStorageService {
   async confirmLocalObject(objectPath: string): Promise<void> {
     const objectId = objectPath.replace(/^\/local-objects\//, '');
     await this.getLocalObject(objectId);
+  }
+
+  async confirmR2Object(objectPath: string): Promise<void> {
+    const objectKey = parseR2ObjectPath(objectPath);
+    const response = await fetch(
+      await createR2PresignedURL({
+        objectKey,
+        method: 'HEAD',
+        expiresInSeconds: 5 * 60,
+      }),
+      { method: 'HEAD' },
+    );
+    if (!response.ok) {
+      throw new ObjectNotFoundError();
+    }
+  }
+
+  async downloadR2Object(objectPath: string): Promise<Response> {
+    const objectKey = parseR2ObjectPath(objectPath);
+    const response = await fetch(
+      await createR2PresignedURL({
+        objectKey,
+        method: 'GET',
+        expiresInSeconds: 5 * 60,
+      }),
+      { method: 'GET' },
+    );
+    if (response.status === 404) {
+      throw new ObjectNotFoundError();
+    }
+    if (!response.ok) {
+      throw new Error(`R2 download failed with status ${response.status}`);
+    }
+
+    const headers = new Headers();
+    for (const name of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag']) {
+      const value = response.headers.get(name);
+      if (value) headers.set(name, value);
+    }
+    headers.set('Cache-Control', 'public, max-age=3600');
+    return new Response(response.body, {
+      status: response.status,
+      headers,
+    });
   }
 
   getPublicObjectSearchPaths(): Array<string> {
@@ -408,6 +478,147 @@ function parseObjectPath(path: string): {
     bucketName,
     objectName,
   };
+}
+
+function getR2Config(): {
+  accountId: string;
+  bucketName: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  endpoint: string;
+} {
+  const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID?.trim();
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME?.trim();
+  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY?.trim();
+  if (!accountId || !bucketName || !accessKeyId || !secretAccessKey) {
+    throw new Error(
+      'Cloudflare R2 is not configured. Set CLOUDFLARE_R2_ACCOUNT_ID, ' +
+        'CLOUDFLARE_R2_BUCKET_NAME, CLOUDFLARE_R2_ACCESS_KEY_ID, and ' +
+        'CLOUDFLARE_R2_SECRET_ACCESS_KEY.',
+    );
+  }
+  return {
+    accountId,
+    bucketName,
+    accessKeyId,
+    secretAccessKey,
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+  };
+}
+
+function createR2ObjectKey(fileName: string): string {
+  const safeName = fileName
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120) || 'upload';
+  return `uploads/${randomUUID()}-${safeName}`;
+}
+
+function parseR2ObjectPath(objectPath: string): string {
+  const prefix = '/r2-objects/';
+  if (!objectPath.startsWith(prefix)) {
+    throw new ObjectNotFoundError();
+  }
+  const encodedKey = objectPath.slice(prefix.length);
+  try {
+    const objectKey = decodeURIComponent(encodedKey);
+    if (!objectKey || objectKey.includes('..')) {
+      throw new Error('Invalid R2 object path');
+    }
+    return objectKey;
+  } catch {
+    throw new ObjectNotFoundError();
+  }
+}
+
+function encodeRfc3986(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+}
+
+function encodeR2Path(objectKey: string): string {
+  return `/${objectKey.split('/').map(encodeRfc3986).join('/')}`;
+}
+
+function toAmzDate(date: Date): { short: string; full: string } {
+  const iso = date.toISOString().replace(/[-:]/g, '');
+  return {
+    short: iso.slice(0, 8),
+    full: `${iso.slice(0, 15)}Z`,
+  };
+}
+
+function hmac(key: Buffer | string, value: string): Buffer {
+  return createHmac('sha256', key).update(value).digest();
+}
+
+async function createR2PresignedURL({
+  objectKey,
+  method,
+  contentType,
+  expiresInSeconds,
+}: {
+  objectKey: string;
+  method: 'GET' | 'PUT' | 'HEAD';
+  contentType?: string;
+  expiresInSeconds: number;
+}): Promise<string> {
+  const config = getR2Config();
+  const now = new Date();
+  const { short: dateStamp, full: amzDate } = toAmzDate(now);
+  const region = 'auto';
+  const service = 's3';
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const host = `${config.accountId}.r2.cloudflarestorage.com`;
+  const canonicalUri = `/${encodeRfc3986(config.bucketName)}${encodeR2Path(objectKey)}`;
+  const query: Record<string, string> = {
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': `${config.accessKeyId}/${credentialScope}`,
+    'X-Amz-Date': amzDate,
+    'X-Amz-Expires': String(expiresInSeconds),
+    'X-Amz-SignedHeaders': 'host',
+  };
+  const canonicalQueryString = Object.entries(query)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${encodeRfc3986(key)}=${encodeRfc3986(value)}`)
+    .join('&');
+  const canonicalHeaders = `host:${host}\n`;
+  const payloadHash = 'UNSIGNED-PAYLOAD';
+  const canonicalRequest = [
+    method,
+    canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    'host',
+    payloadHash,
+  ].join('\n');
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    credentialScope,
+    createHash('sha256').update(canonicalRequest).digest('hex'),
+  ].join('\n');
+  const signingKey = hmac(
+    hmac(hmac(hmac(`AWS4${config.secretAccessKey}`, dateStamp), region), service),
+    'aws4_request',
+  );
+  const signature = createHmac('sha256', signingKey)
+    .update(stringToSign)
+    .digest('hex');
+  query['X-Amz-Signature'] = signature;
+  const queryString = Object.entries(query)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${encodeRfc3986(key)}=${encodeRfc3986(value)}`)
+    .join('&');
+  const url = `${config.endpoint}/${encodeRfc3986(config.bucketName)}${encodeR2Path(objectKey)}?${queryString}`;
+  if (method === 'PUT' && contentType) {
+    // The upload client sends this header, but it is intentionally not signed.
+    // R2 accepts an unsigned Content-Type while the URL remains reusable only
+    // for this one short-lived object key.
+  }
+  return url;
 }
 
 async function signObjectURL({
