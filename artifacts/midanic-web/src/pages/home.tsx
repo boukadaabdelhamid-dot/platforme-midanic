@@ -61,9 +61,6 @@ function AnimatedStat({ value, label, suffix = '' }: { value: number; label: str
   );
 }
 
-// ── Partner placeholder logos ──────────────────────────────────────────────
-const PARTNER_NAMES = ['Sonatrach', 'Cevital', 'Djezzy', 'Ooredoo', 'Mobilis', 'Air Algérie'];
-
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function Home() {
   const { t } = useTranslation();
@@ -139,7 +136,7 @@ export default function Home() {
             <div className="space-y-8">
               <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-4 py-1.5">
                 <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                <span className="text-blue-300 text-sm font-medium">ERP Software · Algeria</span>
+                <span className="text-blue-300 text-sm font-medium">MidanicSoftware</span>
               </div>
 
               <h1
@@ -383,26 +380,7 @@ export default function Home() {
         </section>
       )}
 
-      {/* ── 6. PARTNERS ────────────────────────────────────────────────── */}
-      <section className="py-20 border-y border-border">
-        <div className="container mx-auto px-4">
-          <p className="text-center text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-10">
-            {t('home.partners_title')}
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16">
-            {PARTNER_NAMES.map((name) => (
-              <div
-                key={name}
-                className="text-muted-foreground/40 hover:text-muted-foreground transition-colors text-lg font-bold tracking-tight grayscale hover:grayscale-0"
-              >
-                {name}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 7. BLOG PREVIEW ────────────────────────────────────────────── */}
+      {/* ── 6. BLOG PREVIEW ────────────────────────────────────────────── */}
       {blogData && blogData.posts.length > 0 && (
         <section className="py-24 bg-slate-50 dark:bg-slate-900/50">
           <div className="container mx-auto px-4">

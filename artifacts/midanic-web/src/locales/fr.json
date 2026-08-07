@@ -17,8 +17,8 @@
     "dashboard": "Mon Tableau de Bord"
   },
   "home": {
-    "hero_title": "Logiciels ERP Conçus pour les Entreprises Algériennes",
-    "hero_subtitle": "Solutions ERP professionnelles conçues pour évoluer avec vos opérations. Faites confiance aux entreprises à travers l'Algérie et au-delà.",
+    "hero_title": "Des logiciels de gestion pour les entreprises modernes",
+    "hero_subtitle": "Des solutions logicielles professionnelles conçues pour simplifier et développer vos opérations.",
     "cta_primary": "Essai Gratuit",
     "cta_secondary": "Réserver une Démo",
     "pillars_eyebrow": "Pourquoi Midanic",
@@ -50,7 +50,6 @@
     "stats_downloads": "Téléchargements",
     "stats_countries": "Pays",
     "stats_years": "Années d'Expérience",
-    "partners_title": "Faites confiance aux grandes entreprises algériennes",
     "blog_eyebrow": "Insights",
     "blog_title": "Dernières Nouvelles de Notre Blog",
     "view_blog": "Lire Plus",

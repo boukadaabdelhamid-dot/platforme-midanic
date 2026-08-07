@@ -17,8 +17,8 @@
     "dashboard": "My Dashboard"
   },
   "home": {
-    "hero_title": "Enterprise Software Built for Algerian Businesses",
-    "hero_subtitle": "Professional ERP solutions designed to scale with your operations. Trusted by companies across Algeria and beyond.",
+    "hero_title": "Business Software Built for Modern Teams",
+    "hero_subtitle": "Professional software solutions designed to simplify and scale your operations.",
     "cta_primary": "Request Free Trial",
     "cta_secondary": "Book a Demo",
     "pillars_eyebrow": "Why Midanic",
@@ -50,7 +50,6 @@
     "stats_downloads": "Downloads",
     "stats_countries": "Countries",
     "stats_years": "Years in Business",
-    "partners_title": "Trusted by leading Algerian companies",
     "blog_eyebrow": "Insights",
     "blog_title": "Latest from Our Blog",
     "view_blog": "Read More",
