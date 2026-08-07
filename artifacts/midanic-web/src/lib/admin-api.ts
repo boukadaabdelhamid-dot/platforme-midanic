@@ -22,8 +22,31 @@ async function request<T>(
     },
   });
   if (res.status === 204) return undefined as T;
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+  const contentType = res.headers.get("content-type") ?? "";
+  const raw = await res.text();
+  let data: unknown = null;
+
+  if (raw.trim()) {
+    if (contentType.includes("application/json")) {
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        throw new Error(`Invalid JSON response from ${path} (HTTP ${res.status})`);
+      }
+    } else {
+      const preview = raw.replace(/\s+/g, " ").trim().slice(0, 120);
+      throw new Error(
+        `API returned ${contentType || "non-JSON content"} for ${path} (HTTP ${res.status})` +
+          (preview ? `: ${preview}` : ""),
+      );
+    }
+  }
+
+  const errorMessage =
+    data && typeof data === "object" && "error" in data
+      ? String((data as { error?: unknown }).error)
+      : `HTTP ${res.status}`;
+  if (!res.ok) throw new Error(errorMessage);
   return data as T;
 }
 
